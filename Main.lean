@@ -38,7 +38,7 @@ mutual
     | var (idx : Nat) 
     | const (name : Name)
     | app (fn : DkExpr) (arg : DkExpr)
-    | lam (vars : Nat) (bod : DkExpr)
+    | lam (bod : DkExpr)
     | pi (dom : DkExpr) (img : DkExpr)
 end
 
@@ -97,6 +97,7 @@ def envToDk (env : Lean.Environment) : TransM Unit := do
   )
 
 structure PrintCtx where
+  env : DkEnv
   lvl : Nat := 0
   deriving Inhabited
   
@@ -105,60 +106,80 @@ structure PrintState where
   out           : List String := []
   deriving Inhabited
 
-abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ Id
+abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
+
+def withResetLevelPrint : PrintM α → PrintM α :=
+  withReader fun ctx => { ctx with lvl := 0 }
+
+def withNewLevelPrint : PrintM α → PrintM α :=
+  withReader fun ctx => { ctx with
+    lvl := ctx.lvl + 1 }
+
+def withSetLevelPrint (lvl : Nat) : PrintM α → PrintM α :=
+  withReader fun ctx => { ctx with lvl }
 
 mutual
-  def dkRulePrint (rule : DkRule) : PrintM String := do
+  partial def dkRulePrint (rule : DkRule) : PrintM String := do
     match rule with
-    | .mk (vars : Nat) (lhs : DkExpr) (rhs : DkExpr) => sorry
+    | .mk (vars : Nat) (lhs : DkExpr) (rhs : DkExpr) =>
+      let mut varsStrings := []
+      for i in [0:vars] do
+        varsStrings := varsStrings ++ [s!"x{i}"]
+      let varsString := ", ".intercalate varsStrings
+      withSetLevelPrint vars do
+        pure s!"[{varsString}] {← dkExprPrint lhs} --> {← dkExprPrint rhs}."
 
-  def dkExprPrint (expr : DkExpr) : PrintM String := do
+  partial def dkExprPrint' (expr : DkExpr) : PrintM (String × Bool) := do
     match expr with
-    | .var (idx : Nat) => sorry
-    | .const (name : Name) => sorry
-    | .app (fn : DkExpr) (arg : DkExpr) => sorry
-    | .lam (vars : Nat) (bod : DkExpr) => sorry
-    | .pi (dom : DkExpr) (img : DkExpr) => sorry
+    | .var (idx : Nat) => pure (s!"x{(← read).lvl - (idx + 1)}", false)
+    | .const (name : Name) =>
+      if ! ((← get).printedConsts.contains name) then
+        -- print this constant first to make sure the DAG of constant dependencies
+        -- is correctly linearized upon printing the .dk file
+        let some const := (← read).env.constMap.find? name | throw "could not find referenced constant \"{name}\""
+        dkConstPrint const
+      pure (toString name, false)
+    | .app (fn : DkExpr) (arg : DkExpr) =>
+      let (fnExprString, needsParens) ← dkExprPrint' fn
+      let fnString := if needsParens then s!"({fnExprString})" else fnExprString
+      pure (s!"{fnString} {← dkExprPrint arg}", false)
+    | .lam (bod : DkExpr) => pure (s!"x{(← read).lvl} => {← withNewLevelPrint $ dkExprPrint bod}", true)
+    | .pi (dom : DkExpr) (img : DkExpr) => pure (s!"x{(← read).lvl}:{← dkExprPrint dom} -> {← withNewLevelPrint $ dkExprPrint img}", true)
 
-  def dkConstPrint (const : DkConst) : PrintM PUnit := do
+  partial def dkExprPrint (expr : DkExpr) : PrintM String := do pure (← dkExprPrint' expr).1
+
+  partial def dkConstPrint (const : DkConst) : PrintM PUnit := withResetLevelPrint do
     let constString ← match const with
-      | .static (name : Name) (type : DkExpr) => sorry
-      | .definable (name : Name) (type : DkExpr) (rules : List DkRule) => sorry
+      | .static (name : Name) (type : DkExpr) => do pure s!"{name} : {← dkExprPrint type}."
+      | .definable (name : Name) (type : DkExpr) (rules : List DkRule) => do
+        let decl := s!"def {name} : {← dkExprPrint type}."
+        let rules := "\n".intercalate (← rules.mapM dkRulePrint)
+        pure s!"{decl}\n{rules}"
 
-    modify fun s => { s with printedConsts := s.printedConsts.insert const.name, out := s.out ++ constString }
+    modify fun s => { s with printedConsts := s.printedConsts.insert const.name, out := s.out ++ [constString] }
 end
+    
 
 def dkEnvPrint (env : DkEnv) : PrintM PUnit := do
   env.constMap.forM (fun _ const => dkConstPrint const)
-
---instance : ToString DkRule where toString
---  | .mk (vars : Nat) (lhs : DkExpr) (rhs : DkExpr) => sorry
---
---instance : ToString DkConst where toString
---  | .static (name : Name) (type : DkExpr)  => sorry
---  | .definable (name : Name) (type : DkExpr) (rules : List DkRule) => sorry
---
---instance : ToString DkExpr where toString
---  | .var (idx : Nat) => sorry
---  | .const (name : Name) => toString name
---  | .app (fn : DkExpr) (arg : DkExpr) => sorry
---  | .lam (vars : Nat) (bod : DkExpr) => sorry
---  | .pi (dom : DkExpr) (img : DkExpr) => sorry
-
-instance : ToString DkEnv where toString env :=
-  match (StateT.run (ReaderT.run (dkEnvPrint env) default) default) with
-  | (_, s) => "\n".intercalate s.out
 
 def main (args : List String) : IO UInt32 := do
   let path := ⟨"Test.lean"⟩
   let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default path.toString default
   if not success then
     throw $ IO.userError $ "elab failed"
+
   IO.println s!"number of constants: {leanEnv.constants.size}"
   leanEnv.constants.forM (fun _ const => do
     IO.println s!"definition: {repr const}"
   )
+
   let (_, {env := dkEnv}) := (StateT.run (ReaderT.run (envToDk leanEnv) default) default)
-  IO.FS.writeFile "out.dk" (toString dkEnv) 
+
+  let dkEnvString ← match (ExceptT.run (StateT.run (ReaderT.run (dkEnvPrint dkEnv) {env := dkEnv}) default)) with
+    | .error s => throw $ IO.userError s
+    | .ok (_, s) => pure $ "\n\n".intercalate s.out
+
+  IO.FS.writeFile "out.dk" dkEnvString 
 
   return 0
