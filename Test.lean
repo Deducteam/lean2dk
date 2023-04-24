@@ -1,3 +1,6 @@
 prelude
 
-def test : Type → Type := λ x : Type => x
+inductive True : Prop where
+  | intro : True
+
+def test : True → True := λ x : True => x

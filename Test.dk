@@ -1,0 +1,4 @@
+True : Type.
+
+def test : True -> True.
+[] test --> (x => x).
