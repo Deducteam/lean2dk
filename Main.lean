@@ -40,6 +40,7 @@ mutual
     | app (fn : DkExpr) (arg : DkExpr)
     | lam (bod : DkExpr)
     | pi (dom : DkExpr) (img : DkExpr)
+    | type
 end
 
 def DkConst.name : DkConst → Name
@@ -63,11 +64,21 @@ structure TransState where
 
 abbrev TransM := ReaderT TransCtx $ StateT TransState $ Id
 
+def withResetTransMLevel : TransM α → TransM α :=
+  withReader fun ctx => { ctx with lvl := 0 }
+
+def withNewTransMLevel : TransM α → TransM α :=
+  withReader fun ctx => { ctx with
+    lvl := ctx.lvl + 1 }
+
+def withSetTransMLevel (lvl : Nat) : TransM α → TransM α :=
+  withReader fun ctx => { ctx with lvl }
+
 def exprToDk : Lean.Expr → TransM DkExpr
   | .bvar idx => sorry
   | .sort lvl => sorry
-  | .const name lvls => sorry
-  | .app fnc arg => sorry
+  | .const name lvls => pure $ .const name -- FIXME lvls?
+  | .app fnc arg => do pure $ .app (← exprToDk fnc) (← exprToDk fnc)
   | .lam name typ bod _ => sorry
   | .forallE name dom img _ => sorry
   | .letE name typ exp bod _ => sorry
@@ -78,14 +89,15 @@ def exprToDk : Lean.Expr → TransM DkExpr
   | .mdata .. => sorry
 
 def constToDk : Lean.ConstantInfo → TransM DkConst
-  | .axiomInfo    (val : Lean.AxiomVal) => sorry
-  | .defnInfo     (val : Lean.DefinitionVal) => sorry
-  | .thmInfo      (val : Lean.TheoremVal) => sorry
-  | .opaqueInfo   (val : Lean.OpaqueVal) => sorry
-  | .quotInfo     (val : Lean.QuotVal) => sorry
-  | .inductInfo   (val : Lean.InductiveVal) => sorry
-  | .ctorInfo     (val : Lean.ConstructorVal) => sorry
-  | .recInfo      (val : Lean.RecursorVal) => sorry
+  | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static val.name (.const `AXIOM.FIXME) -- FIXME
+  | .defnInfo     (val : Lean.DefinitionVal) => do
+    pure $ .definable val.name (← exprToDk val.type) [.mk 0 (.const val.name) (← exprToDk val.value)]
+  | .thmInfo      (val : Lean.TheoremVal) => pure $ .static val.name (.const `THM.FIXME) -- FIXME
+  | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static val.name (.const `OPAQUE.FIXME) -- FIXME
+  | .quotInfo     (val : Lean.QuotVal) => pure $ .static val.name (.const `QUOT.FIXME) -- FIXME
+  | .inductInfo   (val : Lean.InductiveVal) => pure $ .static val.name .type -- FIXME type should depend on inductive sort?
+  | .ctorInfo     (val : Lean.ConstructorVal) => pure $ .static val.name (.const `CTOR.FIXME) -- FIXME
+  | .recInfo      (val : Lean.RecursorVal) => pure $ .static val.name (.const `REC.FIXME) -- FIXME
 
 def envToDk (env : Lean.Environment) : TransM Unit := do
   env.constants.forM (fun _ const => do
@@ -108,14 +120,14 @@ structure PrintState where
 
 abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
 
-def withResetLevelPrint : PrintM α → PrintM α :=
+def withResetPrintMLevel : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with lvl := 0 }
 
-def withNewLevelPrint : PrintM α → PrintM α :=
+def withNewPrintMLevel : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with
     lvl := ctx.lvl + 1 }
 
-def withSetLevelPrint (lvl : Nat) : PrintM α → PrintM α :=
+def withSetPrintMLevel (lvl : Nat) : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with lvl }
 
 mutual
@@ -126,7 +138,7 @@ mutual
       for i in [0:vars] do
         varsStrings := varsStrings ++ [s!"x{i}"]
       let varsString := ", ".intercalate varsStrings
-      withSetLevelPrint vars do
+      withSetPrintMLevel vars do
         pure s!"[{varsString}] {← dkExprPrint lhs} --> {← dkExprPrint rhs}."
 
   partial def dkExprPrint' (expr : DkExpr) : PrintM (String × Bool) := do
@@ -143,12 +155,13 @@ mutual
       let (fnExprString, needsParens) ← dkExprPrint' fn
       let fnString := if needsParens then s!"({fnExprString})" else fnExprString
       pure (s!"{fnString} {← dkExprPrint arg}", false)
-    | .lam (bod : DkExpr) => pure (s!"x{(← read).lvl} => {← withNewLevelPrint $ dkExprPrint bod}", true)
-    | .pi (dom : DkExpr) (img : DkExpr) => pure (s!"x{(← read).lvl}:{← dkExprPrint dom} -> {← withNewLevelPrint $ dkExprPrint img}", true)
+    | .lam (bod : DkExpr) => pure (s!"x{(← read).lvl} => {← withNewPrintMLevel $ dkExprPrint bod}", true)
+    | .pi (dom : DkExpr) (img : DkExpr) => pure (s!"x{(← read).lvl}:{← dkExprPrint dom} -> {← withNewPrintMLevel $ dkExprPrint img}", true)
+    | .type => pure ("Type", false)
 
   partial def dkExprPrint (expr : DkExpr) : PrintM String := do pure (← dkExprPrint' expr).1
 
-  partial def dkConstPrint (const : DkConst) : PrintM PUnit := withResetLevelPrint do
+  partial def dkConstPrint (const : DkConst) : PrintM PUnit := withResetPrintMLevel do
     let constString ← match const with
       | .static (name : Name) (type : DkExpr) => do pure s!"{name} : {← dkExprPrint type}."
       | .definable (name : Name) (type : DkExpr) (rules : List DkRule) => do
