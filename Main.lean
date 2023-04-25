@@ -33,14 +33,17 @@ mutual
   inductive DkConst where
     | static (name : Name) (type : DkExpr) 
     | definable (name : Name) (type : DkExpr) (rules : List DkRule)
+    deriving Repr
 
   inductive DkExpr
     | var (idx : Nat) 
     | const (name : Name)
+    | fixme (msg : String)
     | app (fn : DkExpr) (arg : DkExpr)
     | lam (bod : DkExpr)
     | pi (dom : DkExpr) (img : DkExpr)
     | type
+    deriving Repr
 end
 
 def DkConst.name : DkConst → Name
@@ -75,29 +78,29 @@ def withSetTransMLevel (lvl : Nat) : TransM α → TransM α :=
   withReader fun ctx => { ctx with lvl }
 
 def exprToDk : Lean.Expr → TransM DkExpr
-  | .bvar idx => sorry
-  | .sort lvl => sorry
+  | .bvar idx => pure $ .var idx
+  | .sort lvl => pure $ .type -- FIXME
   | .const name lvls => pure $ .const name -- FIXME lvls?
-  | .app fnc arg => do pure $ .app (← exprToDk fnc) (← exprToDk fnc)
-  | .lam name typ bod _ => sorry
-  | .forallE name dom img _ => sorry
-  | .letE name typ exp bod _ => sorry
-  | .lit lit => sorry
-  | .proj _ idx exp => sorry
-  | .fvar ..  => sorry
-  | .mvar ..  => sorry
-  | .mdata .. => sorry
+  | .app fnc arg => do pure $ .app (← exprToDk fnc) (← exprToDk arg)
+  | .lam name typ bod _ => do pure $ .lam (← withNewTransMLevel $ exprToDk bod) -- FIXME typ?
+  | .forallE name dom img _ => do pure $ .pi (← exprToDk dom) (← withNewTransMLevel $ exprToDk img)
+  | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
+  | .lit lit => pure $ .fixme "LIT.FIXME" -- FIXME
+  | .proj _ idx exp => pure $ .fixme "PROJ.FIXME" -- FIXME
+  | .fvar ..  => pure $ .fixme "FVAR.FIXME" -- FIXME
+  | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
+  | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
 
 def constToDk : Lean.ConstantInfo → TransM DkConst
-  | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static val.name (.const `AXIOM.FIXME) -- FIXME
+  | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static val.name (.fixme "AXIOM.FIXME") -- FIXME
   | .defnInfo     (val : Lean.DefinitionVal) => do
     pure $ .definable val.name (← exprToDk val.type) [.mk 0 (.const val.name) (← exprToDk val.value)]
-  | .thmInfo      (val : Lean.TheoremVal) => pure $ .static val.name (.const `THM.FIXME) -- FIXME
-  | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static val.name (.const `OPAQUE.FIXME) -- FIXME
-  | .quotInfo     (val : Lean.QuotVal) => pure $ .static val.name (.const `QUOT.FIXME) -- FIXME
+  | .thmInfo      (val : Lean.TheoremVal) => pure $ .static val.name (.fixme "THM.FIXME") -- FIXME
+  | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static val.name (.fixme "OPAQUE.FIXME") -- FIXME
+  | .quotInfo     (val : Lean.QuotVal) => pure $ .static val.name (.fixme "QUOT.FIXME") -- FIXME
   | .inductInfo   (val : Lean.InductiveVal) => pure $ .static val.name .type -- FIXME type should depend on inductive sort?
-  | .ctorInfo     (val : Lean.ConstructorVal) => pure $ .static val.name (.const `CTOR.FIXME) -- FIXME
-  | .recInfo      (val : Lean.RecursorVal) => pure $ .static val.name (.const `REC.FIXME) -- FIXME
+  | .ctorInfo     (val : Lean.ConstructorVal) => pure $ .static val.name (.fixme "CTOR.FIXME") -- FIXME
+  | .recInfo      (val : Lean.RecursorVal) => pure $ .static val.name (.fixme "REC.FIXME") -- FIXME
 
 def envToDk (env : Lean.Environment) : TransM Unit := do
   env.constants.forM (fun _ const => do
@@ -130,6 +133,24 @@ def withNewPrintMLevel : PrintM α → PrintM α :=
 def withSetPrintMLevel (lvl : Nat) : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with lvl }
 
+def dkExprNeedsAppParens : DkExpr → Bool
+  | .var .. => false
+  | .const .. => false
+  | .fixme .. => true
+  | .app .. => false
+  | .lam .. => true
+  | .pi .. => true -- should never happen but whatever
+  | .type => false
+
+def dkExprNeedsPiParens : DkExpr → Bool
+  | .var .. => false
+  | .const .. => false
+  | .fixme .. => true
+  | .app .. => true
+  | .lam .. => true -- should never happen but whatever
+  | .pi .. => true
+  | .type => false
+
 mutual
   partial def dkRulePrint (rule : DkRule) : PrintM String := do
     match rule with
@@ -141,27 +162,34 @@ mutual
       withSetPrintMLevel vars do
         pure s!"[{varsString}] {← dkExprPrint lhs} --> {← dkExprPrint rhs}."
 
-  partial def dkExprPrint' (expr : DkExpr) : PrintM (String × Bool) := do
+  partial def dkExprPrint (expr : DkExpr) : PrintM String := do
     match expr with
-    | .var (idx : Nat) => pure (s!"x{(← read).lvl - (idx + 1)}", false)
+    | .var (idx : Nat) => pure s!"x{(← read).lvl - (idx + 1)}"
     | .const (name : Name) =>
       if ! ((← get).printedConsts.contains name) then
         -- print this constant first to make sure the DAG of constant dependencies
         -- is correctly linearized upon printing the .dk file
-        let some const := (← read).env.constMap.find? name | throw "could not find referenced constant \"{name}\""
+        let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
         dkConstPrint const
-      pure (toString name, false)
+      pure $ toString name
+    | .fixme (msg : String) => pure s!"Type (;{msg};)"
     | .app (fn : DkExpr) (arg : DkExpr) =>
-      let (fnExprString, needsParens) ← dkExprPrint' fn
-      let fnString := if needsParens then s!"({fnExprString})" else fnExprString
-      pure (s!"{fnString} {← dkExprPrint arg}", false)
-    | .lam (bod : DkExpr) => pure (s!"x{(← read).lvl} => {← withNewPrintMLevel $ dkExprPrint bod}", true)
-    | .pi (dom : DkExpr) (img : DkExpr) => pure (s!"x{(← read).lvl}:{← dkExprPrint dom} -> {← withNewPrintMLevel $ dkExprPrint img}", true)
-    | .type => pure ("Type", false)
-
-  partial def dkExprPrint (expr : DkExpr) : PrintM String := do pure (← dkExprPrint' expr).1
+      let fnExprString ← dkExprPrint fn
+      let fnString := if (dkExprNeedsAppParens fn) then s!"({fnExprString})" else fnExprString
+      pure s!"{fnString} {← dkExprPrint arg}"
+    | .lam (bod : DkExpr) => pure s!"x{(← read).lvl} => {← withNewPrintMLevel $ dkExprPrint bod}"
+    | .pi (dom : DkExpr) (img : DkExpr) =>
+      let domExprString ← dkExprPrint dom
+      let domString := if dkExprNeedsPiParens dom then s!"({domExprString})" else domExprString
+      pure s!"x{(← read).lvl}:{domString} -> {← withNewPrintMLevel $ dkExprPrint img}"
+    | .type => pure "Type"
 
   partial def dkConstPrint (const : DkConst) : PrintM PUnit := withResetPrintMLevel do
+    if ((← get).printedConsts.contains const.name) then return
+
+    -- mark this constant as printed to avoid infinite loops
+    modify fun s => { s with printedConsts := s.printedConsts.insert const.name}
+
     let constString ← match const with
       | .static (name : Name) (type : DkExpr) => do pure s!"{name} : {← dkExprPrint type}."
       | .definable (name : Name) (type : DkExpr) (rules : List DkRule) => do
@@ -169,12 +197,15 @@ mutual
         let rules := "\n".intercalate (← rules.mapM dkRulePrint)
         pure s!"{decl}\n{rules}"
 
-    modify fun s => { s with printedConsts := s.printedConsts.insert const.name, out := s.out ++ [constString] }
+    modify fun s => { s with out := s.out ++ [constString] }
+
 end
     
 
 def dkEnvPrint (env : DkEnv) : PrintM PUnit := do
-  env.constMap.forM (fun _ const => dkConstPrint const)
+  env.constMap.forM (fun _ const =>
+    --dbg_trace s!"printing: {const.name}"
+    dkConstPrint const)
 
 def main (args : List String) : IO UInt32 := do
   let path := ⟨"Test.lean"⟩
@@ -182,17 +213,25 @@ def main (args : List String) : IO UInt32 := do
   if not success then
     throw $ IO.userError $ "elab failed"
 
-  IO.println s!"number of constants: {leanEnv.constants.size}"
-  leanEnv.constants.forM (fun _ const => do
-    IO.println s!"definition: {repr const}"
-  )
 
   let (_, {env := dkEnv}) := (StateT.run (ReaderT.run (envToDk leanEnv) default) default)
+
+  if false then
+    IO.println s!"number of constants: {leanEnv.constants.size}"
+    leanEnv.constants.forM (fun _ const => do
+      IO.println s!"definition: {repr const}"
+    )
+
+  if false then
+    dkEnv.constMap.forM (fun _ const => do
+      IO.println s!"definition: {repr const}"
+    )
 
   let dkEnvString ← match (ExceptT.run (StateT.run (ReaderT.run (dkEnvPrint dkEnv) {env := dkEnv}) default)) with
     | .error s => throw $ IO.userError s
     | .ok (_, s) => pure $ "\n\n".intercalate s.out
+  let dkEnvString := dkEnvString ++ "\n"
 
-  IO.FS.writeFile "out.dk" dkEnvString 
+  IO.FS.writeFile "out.dk" dkEnvString
 
   return 0
