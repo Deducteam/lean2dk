@@ -43,6 +43,7 @@ mutual
     | lam (bod : DkExpr)
     | pi (dom : DkExpr) (img : DkExpr)
     | type
+    | kind
     deriving Repr
 end
 
@@ -77,9 +78,15 @@ def withNewTransMLevel : TransM α → TransM α :=
 def withSetTransMLevel (lvl : Nat) : TransM α → TransM α :=
   withReader fun ctx => { ctx with lvl }
 
+def dkPrelude : List DkConst := -- TODO rename things to avoid naming conflicts with stdlib
+[
+  .static `Set .type,
+  .static `El (.pi (.const `Set) (.type))
+]
+
 def exprToDk : Lean.Expr → TransM DkExpr
   | .bvar idx => pure $ .var idx
-  | .sort lvl => pure $ .type -- FIXME
+  | .sort lvl => pure $ .const `Set -- FIXME
   | .const name lvls => pure $ .const name -- FIXME lvls?
   | .app fnc arg => do pure $ .app (← exprToDk fnc) (← exprToDk arg)
   | .lam name typ bod _ => do pure $ .lam (← withNewTransMLevel $ exprToDk bod) -- FIXME typ?
@@ -91,7 +98,7 @@ def exprToDk : Lean.Expr → TransM DkExpr
   | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
   | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
 
-def constToDk : Lean.ConstantInfo → TransM DkConst
+def constToDk : Lean.ConstantInfo → TransM DkConst -- FIXME universe levels?
   | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static val.name (.fixme "AXIOM.FIXME") -- FIXME
   | .defnInfo     (val : Lean.DefinitionVal) => do
     pure $ .definable val.name (← exprToDk val.type) [.mk 0 (.const val.name) (← exprToDk val.value)]
@@ -99,10 +106,12 @@ def constToDk : Lean.ConstantInfo → TransM DkConst
   | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static val.name (.fixme "OPAQUE.FIXME") -- FIXME
   | .quotInfo     (val : Lean.QuotVal) => pure $ .static val.name (.fixme "QUOT.FIXME") -- FIXME
   | .inductInfo   (val : Lean.InductiveVal) => pure $ .static val.name .type -- FIXME type should depend on inductive sort?
-  | .ctorInfo     (val : Lean.ConstructorVal) => pure $ .static val.name (.fixme "CTOR.FIXME") -- FIXME
-  | .recInfo      (val : Lean.RecursorVal) => pure $ .static val.name (.fixme "REC.FIXME") -- FIXME
+  | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static val.name (← exprToDk val.type)
+  | .recInfo      (val : Lean.RecursorVal) => do pure $ .static val.name (← exprToDk val.type)
 
 def envToDk (env : Lean.Environment) : TransM Unit := do
+  for const in dkPrelude do
+    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert const.name const} }
   env.constants.forM (fun _ const => do
     match (← get).env.constMap.find? const.name with
     | none => do
@@ -141,6 +150,7 @@ def dkExprNeedsAppParens : DkExpr → Bool
   | .lam .. => true
   | .pi .. => true -- should never happen but whatever
   | .type => false
+  | .kind => false
 
 def dkExprNeedsPiParens : DkExpr → Bool
   | .var .. => false
@@ -150,6 +160,9 @@ def dkExprNeedsPiParens : DkExpr → Bool
   | .lam .. => true -- should never happen but whatever
   | .pi .. => true
   | .type => false
+  | .kind => false
+
+instance : ToString Name where toString name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
 
 mutual
   partial def dkRulePrint (rule : DkRule) : PrintM String := do
@@ -183,6 +196,7 @@ mutual
       let domString := if dkExprNeedsPiParens dom then s!"({domExprString})" else domExprString
       pure s!"x{(← read).lvl}:{domString} -> {← withNewPrintMLevel $ dkExprPrint img}"
     | .type => pure "Type"
+    | .kind => pure "Kind"
 
   partial def dkConstPrint (const : DkConst) : PrintM PUnit := withResetPrintMLevel do
     if ((← get).printedConsts.contains const.name) then return
@@ -201,7 +215,6 @@ mutual
 
 end
     
-
 def dkEnvPrint (env : DkEnv) : PrintM PUnit := do
   env.constMap.forM (fun _ const =>
     --dbg_trace s!"printing: {const.name}"
@@ -212,7 +225,6 @@ def main (args : List String) : IO UInt32 := do
   let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default path.toString default
   if not success then
     throw $ IO.userError $ "elab failed"
-
 
   let (_, {env := dkEnv}) := (StateT.run (ReaderT.run (envToDk leanEnv) default) default)
 
