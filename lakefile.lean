@@ -9,7 +9,7 @@ lean_exe lean2dk where
   supportInterpreter := true
   root := `Main
 
---lean_lib Lean2Dk { roots := #[`Lean2Dk] }
+lean_lib Dedukti { roots := #[`Dedukti] }
 
 require Cli from git
   "git@github.com:lurk-lab/Cli.lean.git" @ "ef6f9bcd1738638fca8d319dbee653540d56614e"
