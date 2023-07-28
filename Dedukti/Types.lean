@@ -26,8 +26,18 @@ mutual
     | pi (dom : Expr) (img : Expr)
     | type
     | kind
-    deriving Repr
+    deriving Repr, Inhabited
 end
+
+namespace Expr
+
+def piN (params : List Expr) (img : Expr) : Expr :=
+  params.foldr (fun dom e => .pi dom e) img
+
+def appN (head : Expr) (params : List Expr) : Expr :=
+  params.foldl (fun arg e => .app e arg) head
+
+end Expr
 
 structure Env where
   constMap : Std.RBMap Name Const compare
@@ -38,3 +48,29 @@ def Const.name : Const → Name
   | .definable (name : Name) .. => name
 
 end Dedukti
+
+namespace Encoding
+
+  def natToExpr : Nat → Dedukti.Expr
+    | .zero => .const `nat.z
+    | .succ n => (.app (.const `nat.s) (natToExpr n))
+
+  inductive Level
+    | z      : Level
+    | s      : Level → Level
+    | max    : Level → Level → Level
+    | imax   : Level → Level → Level
+    | var    : Nat → Level
+
+  namespace Level
+
+    def toExpr : Level → Dedukti.Expr
+      | z          => .const `z
+      | s l        => .app (.const `s ) (toExpr l)
+      | max l1 l2  => .appN (.const `max ) [(toExpr l1), (toExpr l2)]
+      | imax l1 l2 => .appN (.const `imax ) [(toExpr l1), (toExpr l2)]
+      | var n      => .app (.const `var ) (natToExpr n)
+
+  end Level
+
+end Encoding

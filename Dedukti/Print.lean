@@ -82,21 +82,21 @@ mutual
 
   partial def Expr.print (expr : Expr) : PrintM String := do
     match expr with
-    | .var (idx : Nat) => pure s!"x{(← read).lvl - (idx + 1)}"
-    | .const (name : Name) =>
+    | .var idx => pure s!"x{(← read).lvl - (idx + 1)}"
+    | .const name =>
       if ! ((← get).printedConsts.contains name) then
         -- print this constant first to make sure the DAG of constant dependencies
         -- is correctly linearized upon printing the .dk file
         let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
         const.print
       pure $ toString name
-    | .fixme (msg : String) => pure s!"Type (;{msg};)"
-    | .app (fn : Expr) (arg : Expr) =>
+    | .fixme msg => pure s!"Type (;{msg};)"
+    | .app fn arg =>
       let fnExprString ← fn.print
       let fnString := if (dkExprNeedsAppParens fn) then s!"({fnExprString})" else fnExprString
       pure s!"{fnString} {← arg.print}"
-    | .lam (bod : Expr) => pure s!"x{(← read).lvl} => {← withNewPrintMLevel $ bod.print}"
-    | .pi (dom : Expr) (img : Expr) =>
+    | .lam bod => pure s!"x{(← read).lvl} => {← withNewPrintMLevel $ bod.print}"
+    | .pi dom img =>
       let domExprString ← dom.print
       let domString := if dkExprNeedsPiParens dom then s!"({domExprString})" else domExprString
       pure s!"x{(← read).lvl}:{domString} -> {← withNewPrintMLevel $ img.print}"
