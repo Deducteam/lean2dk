@@ -7,7 +7,6 @@ open Lean.Meta
 -- TODO Trans namespace
 
 structure TransCtx where
-  lvl : Nat := 0
   fvars : Array Lean.Expr := default
   lvlParams  : Std.RBMap Name Nat compare := default
   deriving Inhabited
@@ -22,24 +21,36 @@ inductive Exception where
 
 abbrev TransM := ReaderT TransCtx $ StateT TransState MetaM
 
-def withResetTransMLevel : TransM α → TransM α := -- TODO reset lvlParams?
-  withReader fun ctx => { ctx with lvl := 0 }
+@[inline] def TransM.run (x : TransM α) (ctx : TransCtx := {}) (s : TransState := {}) : MetaM (α × TransState) :=
+  x ctx |>.run s
 
-def withNewTransMLevel : TransM α → TransM α :=
-  withReader fun ctx => { ctx with
-    lvl := ctx.lvl + 1 }
+@[inline] def TransM.toIO (x : TransM α) (ctxCore : Lean.Core.Context) (sCore : Lean.Core.State) (ctx : TransCtx := {}) (s : TransState := {}) : IO (α × TransState) := do
+  let ((a, s), _, _) ← (x.run ctx s).toIO ctxCore sCore
+  pure (a, s)
+
+def withResetCtx : TransM α → TransM α := -- TODO reset lvlParams?
+  withReader fun ctx => { ctx with fvars := #[], lvlParams := default }
+
+def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
+  let lvlParams ← params.length.foldM (init := default) fun i curr =>  
+    pure $ curr.insert params[i]! i
+  withReader (fun ctx => { ctx with
+    lvlParams }) m
 
 def withFVars (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   let newFvars := (← read).fvars.append fvars
   withReader (fun ctx => { ctx with
     fvars := newFvars }) m
 
-def withSetTransMLevel (lvl : Nat) : TransM α → TransM α :=
-  withReader fun ctx => { ctx with lvl }
-
 def dkPrelude : List Const := -- TODO rename things to avoid naming conflicts with stdlib
 [
   .static `Lvl  .type,
+  .static `Nat  .type,
+  .static `z    (.const `Lvl),
+  .static `s    (.pi (.const `Lvl) (.const `Lvl)),
+  .static `max  (.piN [ (.const `Lvl), (.const `Lvl) ] (.const `Lvl)),
+  .static `imax (.piN [ (.const `Lvl), (.const `Lvl) ] (.const `Lvl)),
+  .static `var  (.piN [ (.const `Nat) ] (.const `Lvl)),
   .static `Univ (.pi (.const `Lvl) (.type)),
   .static `El   (.piN [(.const `Lvl), (.app (.const `Univ) (.var 0))] (.type)),
   .static `Pi   (.piN [
@@ -83,7 +94,9 @@ mutual
     | .sort lvl => do pure $ .app (.const `Univ) (← transLevel lvl) -- FIXME
     | .const name lvls => do pure $ (.appN (.const name) (← lvls.mapM transLevel))
     | .app fnc arg => do pure $ .app (← transExpr fnc) (← transExpr arg)
-    | .lam name typ bod _ => do pure $ .lam (← withNewTransMLevel $ transExpr bod) -- FIXME typ?
+    | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
+                                domVars.foldrM (init := (← withFVars domVars $ transExpr bod)) fun _ (curr) => do
+                                  pure (.lam curr)
     | e@(.forallE ..) => forallTelescope e fun domVars img => do
                                 let (ret, _) ← domVars.size.foldRevM (init := (← withFVars domVars $ transExpr img, ← exprToLevel $ ← inferType img)) fun i (curr, s2) => do
                                   let domVar := domVars[i]!
@@ -91,8 +104,7 @@ mutual
                                   let s1 ← exprToLevel $ ← inferType dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
                                   let s3 := Level.imax s1 s2
                                   --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
-                                  let retDep := (.lam curr) -- FIXME
-                                  let ret := (.appN (.const `Pi) [s1.toExpr, s2.toExpr, s3.toExpr, ← withFVars domVars[:i] $ transExpr dom, retDep])
+                                  let ret := (.appN (.const `Pi) [s1.toExpr, s2.toExpr, s3.toExpr, ← withFVars domVars[:i] $ transExpr dom, (.lam curr)])
                                   pure (ret, s3)
                                 pure ret
     | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
@@ -105,7 +117,7 @@ mutual
     | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
 end
 
-def transConst : Lean.ConstantInfo → TransM Const -- FIXME universe levels? set lvlParams
+def transConst (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do match cnst with
   | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static val.name (.fixme "AXIOM.FIXME") -- FIXME
   | .defnInfo     (val : Lean.DefinitionVal) => do
     pure $ .definable val.name (← transExpr val.type) [.mk 0 (.const val.name) (← transExpr val.value)]

@@ -81,6 +81,7 @@ mutual
         pure s!"[{varsString}] {← lhs.print} --> {← rhs.print}."
 
   partial def Expr.print (expr : Expr) : PrintM String := do
+    -- dbg_trace s!"printing expression: {repr expr}"
     match expr with
     | .var idx => pure s!"x{(← read).lvl - (idx + 1)}"
     | .const name =>
@@ -106,6 +107,7 @@ mutual
   partial def Const.print (const : Const) : PrintM PUnit := withResetPrintMLevel do
     if ((← get).printedConsts.contains const.name) then return
 
+    -- dbg_trace s!"printing: {const.name}"
     -- mark this constant as printed to avoid infinite loops
     modify fun s => { s with printedConsts := s.printedConsts.insert const.name}
 
@@ -117,6 +119,7 @@ mutual
         pure s!"{decl}\n{rules}"
 
     modify fun s => { s with out := s.out ++ [constString] }
+    -- dbg_trace s!"\tprinted: {const.name}"
 
 end
     
