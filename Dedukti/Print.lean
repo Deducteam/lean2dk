@@ -25,6 +25,27 @@ deriving instance Repr for Lean.ConstantInfo
 
 namespace Dedukti
 
+def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid naming conflicts with stdlib
+[
+  `lvl.Lvl,
+  `lvl.z,
+  `lvl.s,
+
+  `nat.Nat,
+  `nat.z,
+  `nat.s,
+
+  `lvl.max,
+  `lvl.imax,
+  `lvl.var,
+
+  `enc.Univ,
+  `enc.Sort,
+  `enc.El,
+  `enc.Pi
+].foldl (init := default) fun curr n => curr.insert n
+
+
 structure PrintCtx where
   env : Env
   lvl : Nat := 0
@@ -47,7 +68,7 @@ def withNewPrintMLevel : PrintM α → PrintM α :=
 def withSetPrintMLevel (lvl : Nat) : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with lvl }
 
-def dkExprNeedsAppParens : Expr → Bool
+def dkExprNeedsFnParens : Expr → Bool
   | .var .. => false
   | .const .. => false
   | .fixme .. => true
@@ -57,7 +78,17 @@ def dkExprNeedsAppParens : Expr → Bool
   | .type => false
   | .kind => false
 
-def dkExprNeedsPiParens : Expr → Bool
+def dkExprNeedsArgParens : Expr → Bool
+  | .var .. => false
+  | .const .. => false
+  | .fixme .. => true
+  | .app .. => true
+  | .lam .. => true
+  | .pi .. => true
+  | .type => false
+  | .kind => false
+
+def dkExprNeedsTypeParens : Expr → Bool
   | .var .. => false
   | .const .. => false
   | .fixme .. => true
@@ -66,8 +97,6 @@ def dkExprNeedsPiParens : Expr → Bool
   | .pi .. => true
   | .type => false
   | .kind => false
-
-instance : ToString Name where toString name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
 
 mutual
   partial def Rule.print (rule : Rule) : PrintM String := do
@@ -81,11 +110,10 @@ mutual
         pure s!"[{varsString}] {← lhs.print} --> {← rhs.print}."
 
   partial def Expr.print (expr : Expr) : PrintM String := do
-    -- dbg_trace s!"printing expression: {repr expr}"
     match expr with
     | .var idx => pure s!"x{(← read).lvl - (idx + 1)}"
     | .const name =>
-      if ! ((← get).printedConsts.contains name) then
+      if !(preludeConstNames.contains name) && ! ((← get).printedConsts.contains name) then
         -- print this constant first to make sure the DAG of constant dependencies
         -- is correctly linearized upon printing the .dk file
         let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
@@ -94,12 +122,14 @@ mutual
     | .fixme msg => pure s!"Type (;{msg};)"
     | .app fn arg =>
       let fnExprString ← fn.print
-      let fnString := if (dkExprNeedsAppParens fn) then s!"({fnExprString})" else fnExprString
-      pure s!"{fnString} {← arg.print}"
+      let fnString := if (dkExprNeedsFnParens fn) then s!"({fnExprString})" else fnExprString
+      let argExprString ← arg.print
+      let argString := if (dkExprNeedsArgParens arg) then s!"({argExprString})" else argExprString
+      pure s!"{fnString} {argString}"
     | .lam bod => pure s!"x{(← read).lvl} => {← withNewPrintMLevel $ bod.print}"
     | .pi dom img =>
       let domExprString ← dom.print
-      let domString := if dkExprNeedsPiParens dom then s!"({domExprString})" else domExprString
+      let domString := if dkExprNeedsTypeParens dom then s!"({domExprString})" else domExprString
       pure s!"x{(← read).lvl}:{domString} -> {← withNewPrintMLevel $ img.print}"
     | .type => pure "Type"
     | .kind => pure "Kind"
@@ -114,6 +144,8 @@ mutual
     let constString ← match const with
       | .static (name : Name) (type : Expr) => do pure s!"{name} : {← type.print}."
       | .definable (name : Name) (type : Expr) (rules : List Rule) => do
+        -- if name == `test then
+        --   dbg_trace s!"printing expression {name}: {repr type}"
         let decl := s!"def {name} : {← type.print}."
         let rules := "\n".intercalate (← rules.mapM (·.print))
         pure s!"{decl}\n{rules}"

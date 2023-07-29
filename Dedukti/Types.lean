@@ -35,7 +35,7 @@ def piN (params : List Expr) (img : Expr) : Expr :=
   params.foldr (fun dom e => .pi dom e) img
 
 def appN (head : Expr) (params : List Expr) : Expr :=
-  params.foldl (fun arg e => .app e arg) head
+  params.foldl (fun e arg => .app e arg) head
 
 end Expr
 
@@ -65,11 +65,11 @@ namespace Encoding
   namespace Level
 
     def toExpr : Level → Dedukti.Expr
-      | z          => .const `z
-      | s l        => .app (.const `s ) (toExpr l)
-      | max l1 l2  => .appN (.const `max ) [(toExpr l1), (toExpr l2)]
-      | imax l1 l2 => .appN (.const `imax ) [(toExpr l1), (toExpr l2)]
-      | var n      => .app (.const `var ) (natToExpr n)
+      | z          => .const `lvl.z
+      | s l        => .app (.const `lvl.s ) (toExpr l)
+      | max l1 l2  => .appN (.const `lvl.max ) [(toExpr l1), (toExpr l2)]
+      | imax l1 l2 => .appN (.const `lvl.imax ) [(toExpr l1), (toExpr l2)]
+      | var n      => .app (.const `lvl.var ) (natToExpr n)
 
   end Level
 

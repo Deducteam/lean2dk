@@ -35,6 +35,6 @@ def main (args : List String) : IO UInt32 := do
     | .ok (_, s) => pure $ "\n\n".intercalate s.out
   let dkEnvString := dkEnvString ++ "\n"
 
-  IO.FS.writeFile "out.dk" dkEnvString
+  IO.FS.writeFile "dk/out.dk" dkEnvString
 
   return 0

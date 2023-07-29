@@ -6,4 +6,7 @@ node_modules
 sess.vim
 /lake-packages/
 /lake-manifest.json
-out.dk
+/dk/out.dk
+stdout
+*.dko
+.depend

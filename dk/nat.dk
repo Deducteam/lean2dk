@@ -1,0 +1,4 @@
+Nat : Type.
+
+z : Nat.
+s : Nat.

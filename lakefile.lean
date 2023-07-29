@@ -38,16 +38,17 @@ def runCmd (cmd : String) : ScriptM $ Except String String := do
   let {exitCode, stderr, stdout} ← runCmd' cmd
   if exitCode != 0
     then return .error stderr
-    else return .ok stdout
+    else return .ok (stdout ++ "\n" ++ stderr)
 
 script test do
   IO.println "running tests..."
   match ← runCmd "lake exe lean2dk" with
   | .error e => IO.eprintln e; return 1
-  | .ok _ =>
+  | .ok stdout =>
+    IO.FS.writeFile "stdout" stdout
     printCmd "echo ---------------- out.dk"
-    printCmd "cat out.dk"
+    printCmd "cat dk/out.dk"
     printCmd "echo ----------------"
-    match ← runCmd "dk check out.dk" with
+    match ← runCmd "make check -C dk" with
     | .error e => IO.eprintln e; return 1
     | .ok _ => IO.println "tests passed!"; return 0

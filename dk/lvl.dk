@@ -1,0 +1,7 @@
+Lvl : Type.
+
+z : Lvl.
+s : Lvl -> Lvl.
+var : nat.Nat -> Lvl.
+max : Lvl -> Lvl -> Lvl.
+imax : Lvl -> Lvl -> Lvl.

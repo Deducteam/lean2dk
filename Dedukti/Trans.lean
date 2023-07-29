@@ -42,28 +42,6 @@ def withFVars (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   withReader (fun ctx => { ctx with
     fvars := newFvars }) m
 
-def dkPrelude : List Const := -- TODO rename things to avoid naming conflicts with stdlib
-[
-  .static `Lvl  .type,
-  .static `Nat  .type,
-  .static `z    (.const `Lvl),
-  .static `s    (.pi (.const `Lvl) (.const `Lvl)),
-  .static `max  (.piN [ (.const `Lvl), (.const `Lvl) ] (.const `Lvl)),
-  .static `imax (.piN [ (.const `Lvl), (.const `Lvl) ] (.const `Lvl)),
-  .static `var  (.piN [ (.const `Nat) ] (.const `Lvl)),
-  .static `Univ (.pi (.const `Lvl) (.type)),
-  .static `El   (.piN [(.const `Lvl), (.app (.const `Univ) (.var 0))] (.type)),
-  .static `Pi   (.piN [
-                    (.const `Lvl), -- s1
-                    (.const `Lvl), -- s2
-                    (.const `Lvl), -- s3
-                    (.app (.const `Univ) (.var 2)),
-                    (.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
-                  ]
-                  (.app (.const `Univ) (.var 2))
-                )
-]
-
 def transLevel' : Lean.Level → TransM Level
   | .zero       => pure .z
   | .succ l     => do pure $ .s (← transLevel' l)
@@ -77,22 +55,24 @@ def transLevel' : Lean.Level → TransM Level
 
 def transLevel (l : Lean.Level) : TransM Expr := do pure (← transLevel' l).toExpr
 
+def fixLeanName (name : Name) : Name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
+
 def exprToLevel (expr : Lean.Expr) : TransM Level := do
   match expr with
     | .sort l => pure $ ← transLevel' l
     | _ => pure sorry
     
-  def abstract (e : Lean.Expr) : TransM Lean.Expr := do
-    e.abstractM (← read).fvars
+def inferLevel (e : Lean.Expr) : TransM Level := do
+  exprToLevel $ ← inferType e -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
 
 mutual
   partial def transExprType (e : Lean.Expr) : TransM Expr := do
-    pure $ .app (.const `El) (← transExpr e)
+    pure $ .appN (.const `enc.El) [(← inferLevel e).toExpr, (← transExpr e)]
 
   partial def transExpr : Lean.Expr → TransM Expr
     | .bvar _ => throw $ .error default "unexpected bound variable encountered"
-    | .sort lvl => do pure $ .app (.const `Univ) (← transLevel lvl) -- FIXME
-    | .const name lvls => do pure $ (.appN (.const name) (← lvls.mapM transLevel))
+    | .sort lvl => do pure $ .app (.const `enc.Sort) (← transLevel lvl) -- FIXME
+    | .const name lvls => do pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM transLevel))
     | .app fnc arg => do pure $ .app (← transExpr fnc) (← transExpr arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
                                 domVars.foldrM (init := (← withFVars domVars $ transExpr bod)) fun _ (curr) => do
@@ -101,10 +81,10 @@ mutual
                                 let (ret, _) ← domVars.size.foldRevM (init := (← withFVars domVars $ transExpr img, ← exprToLevel $ ← inferType img)) fun i (curr, s2) => do
                                   let domVar := domVars[i]!
                                   let dom ← inferType domVar
-                                  let s1 ← exprToLevel $ ← inferType dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
+                                  let s1 ← inferLevel dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
                                   let s3 := Level.imax s1 s2
                                   --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
-                                  let ret := (.appN (.const `Pi) [s1.toExpr, s2.toExpr, s3.toExpr, ← withFVars domVars[:i] $ transExpr dom, (.lam curr)])
+                                  let ret := (.appN (.const `enc.Pi) [s1.toExpr, s2.toExpr, s3.toExpr, ← withFVars domVars[:i] $ transExpr dom, (.lam curr)])
                                   pure (ret, s3)
                                 pure ret
     | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
@@ -117,24 +97,24 @@ mutual
     | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
 end
 
-def transConst (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do match cnst with
-  | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static val.name (.fixme "AXIOM.FIXME") -- FIXME
+def transConst (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
+  let name := fixLeanName cnst.name
+  match cnst with
+  | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
   | .defnInfo     (val : Lean.DefinitionVal) => do
-    pure $ .definable val.name (← transExpr val.type) [.mk 0 (.const val.name) (← transExpr val.value)]
-  | .thmInfo      (val : Lean.TheoremVal) => pure $ .static val.name (.fixme "THM.FIXME") -- FIXME
-  | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static val.name (.fixme "OPAQUE.FIXME") -- FIXME
-  | .quotInfo     (val : Lean.QuotVal) => pure $ .static val.name (.fixme "QUOT.FIXME") -- FIXME
-  | .inductInfo   (val : Lean.InductiveVal) => pure $ .static val.name .type -- FIXME type should depend on inductive sort?
-  | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static val.name (← transExpr val.type)
-  | .recInfo      (val : Lean.RecursorVal) => do pure $ .static val.name (← transExpr val.type)
+    pure $ .definable name (← transExpr val.type) [.mk 0 (.const name) (← transExpr val.value)]
+  | .thmInfo      (val : Lean.TheoremVal) => pure $ .static name (.fixme "THM.FIXME") -- FIXME
+  | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
+  | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
+  | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name (← transExprType val.type)
+  | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name (← transExprType val.type)
+  | .recInfo      (val : Lean.RecursorVal) => do pure $ .static name (← transExprType val.type)
 
 def transEnv (env : Lean.Environment) : TransM Unit := do
-  for const in dkPrelude do
-    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert const.name const} }
   env.constants.forM (fun _ const => do
-    match (← get).env.constMap.find? const.name with
+    match (← get).env.constMap.find? $ fixLeanName const.name with
     | none => do
       let constDk ← transConst const
-      modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert const.name constDk} }
+      modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName const.name) constDk} }
     | some _ => sorry
   )

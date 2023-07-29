@@ -1,0 +1,7 @@
+Univ : lvl.Lvl -> Type.
+
+El : s:lvl.Lvl -> Univ s -> Type.
+
+Pi : s1:lvl.Lvl -> s2:lvl.Lvl -> s3:lvl.Lvl -> T:Univ s1 -> (El s1 T -> Univ s2) -> Univ s3.
+
+Sort : s:lvl.Lvl -> Univ (lvl.s s) .
