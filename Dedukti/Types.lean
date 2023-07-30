@@ -62,15 +62,4 @@ namespace Encoding
     | imax   : Level → Level → Level
     | var    : Nat → Level
 
-  namespace Level
-
-    def toExpr : Level → Dedukti.Expr
-      | z          => .const `lvl.z
-      | s l        => .app (.const `lvl.s ) (toExpr l)
-      | max l1 l2  => .appN (.const `lvl.max ) [(toExpr l1), (toExpr l2)]
-      | imax l1 l2 => .appN (.const `lvl.imax ) [(toExpr l1), (toExpr l2)]
-      | var n      => .app (.const `lvl.var ) (natToExpr n)
-
-  end Level
-
 end Encoding

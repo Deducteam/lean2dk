@@ -42,18 +42,35 @@ def withFVars (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   withReader (fun ctx => { ctx with
     fvars := newFvars }) m
 
+namespace Encoding.Level
+
+  def toExpr : Level → TransM Dedukti.Expr
+    | .z          => pure $ .const `lvl.z
+    | .s l        => do pure $ .app (.const `lvl.s ) (← toExpr l)
+    | .max l1 l2  => do pure $ .appN (.const `lvl.max ) [(← toExpr l1), (← toExpr l2)]
+    | .imax l1 l2 => do pure $ .appN (.const `lvl.imax ) [(← toExpr l1), (← toExpr l2)]
+    | .var n      => do pure $ .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
+    -- | var n      => .app (.const `lvl.var ) (natToExpr n) -- TODO deep encoding
+
+end Encoding.Level
+
 def transLevel' : Lean.Level → TransM Level
   | .zero       => pure .z
   | .succ l     => do pure $ .s (← transLevel' l)
   | .max l1 l2  => do pure $ .max (← transLevel' l1) (← transLevel' l2)
   | .imax l1 l2 => do pure $ .imax (← transLevel' l1) (← transLevel' l2)
-  | .param p    => do 
-                     let some i := (← read).lvlParams.find? p
-                      | throw $ .error default s!"unknown universe parameter {p} encountered"
-                     pure $ .var i 
+  | .param p    => do
+     let some i := (← read).lvlParams.find? p
+      | throw $ .error default s!"unknown universe parameter {p} encountered"
+     pure $ .var i
+     -- TODO deep encoding
+     -- let some i := (← read).lvlParams.find? p
+     --  | throw $ .error default s!"unknown universe parameter {p} encountered"
+     -- pure $ .var i 
+
   | .mvar _     => throw $ .error default "unexpected universe metavariable encountered"
 
-def transLevel (l : Lean.Level) : TransM Expr := do pure (← transLevel' l).toExpr
+def transLevel (l : Lean.Level) : TransM Expr := do (← transLevel' l).toExpr
 
 def fixLeanName (name : Name) : Name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
 
@@ -67,7 +84,7 @@ def inferLevel (e : Lean.Expr) : TransM Level := do
 
 mutual
   partial def transExprType (e : Lean.Expr) : TransM Expr := do
-    pure $ .appN (.const `enc.El) [(← inferLevel e).toExpr, (← transExpr e)]
+    pure $ .appN (.const `enc.El) [← (← inferLevel e).toExpr, (← transExpr e)]
 
   partial def transExpr : Lean.Expr → TransM Expr
     | .bvar _ => throw $ .error default "unexpected bound variable encountered"
@@ -84,7 +101,8 @@ mutual
                                   let s1 ← inferLevel dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
                                   let s3 := Level.imax s1 s2
                                   --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
-                                  let ret := (.appN (.const `enc.Pi) [s1.toExpr, s2.toExpr, s3.toExpr, ← withFVars domVars[:i] $ transExpr dom, (.lam curr)])
+                                  let ret ← withFVars domVars[:i] do 
+                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← transExpr dom, (.lam curr)])
                                   pure (ret, s3)
                                 pure ret
     | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
