@@ -3,5 +3,12 @@ Lvl : Type.
 z : Lvl.
 s : Lvl -> Lvl.
 var : nat.Nat -> Lvl.
-max : Lvl -> Lvl -> Lvl.
-imax : Lvl -> Lvl -> Lvl.
+def max : Lvl -> Lvl -> Lvl.
+def imax : Lvl -> Lvl -> Lvl.
+
+[l1, l2] imax l1 (s l2) --> max l1 (s l2).
+[l] imax l z --> z.
+[l] max l z --> l.
+[l] max z l --> l.
+[l] imax z l --> l.
+[l] imax l l --> l.

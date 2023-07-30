@@ -99,16 +99,20 @@ end
 
 def transConst (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
   let name := fixLeanName cnst.name
+  let type ← transExprType cnst.type
+  let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
   match cnst with
   | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
   | .defnInfo     (val : Lean.DefinitionVal) => do
-    pure $ .definable name (← transExpr val.type) [.mk 0 (.const name) (← transExpr val.value)]
+    let value ← transExpr val.value
+    let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
+    pure $ .definable name type [.mk 0 (.const name) value]
   | .thmInfo      (val : Lean.TheoremVal) => pure $ .static name (.fixme "THM.FIXME") -- FIXME
   | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
   | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
-  | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name (← transExprType val.type)
-  | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name (← transExprType val.type)
-  | .recInfo      (val : Lean.RecursorVal) => do pure $ .static name (← transExprType val.type)
+  | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
+  | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name type
+  | .recInfo      (val : Lean.RecursorVal) => do pure $ .static name type
 
 def transEnv (env : Lean.Environment) : TransM Unit := do
   env.constants.forM (fun _ const => do
