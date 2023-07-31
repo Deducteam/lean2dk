@@ -1,64 +1,19 @@
 import Dedukti.Types
+import Dedukti.Encoding
+import Dedukti.Util
 
 open Dedukti
+open Trans
 open Encoding
 open Lean.Meta
 
--- TODO Trans namespace
+namespace Trans
 
-structure TransCtx where
-  fvars : Array Lean.Expr := default
-  lvlParams  : Std.RBMap Name Nat compare := default
-  deriving Inhabited
-
-structure TransState where
-  env        : Env := default
-  deriving Inhabited
-
-inductive Exception where
-  | error             : String → Exception
-  | unsupportedSyntax : Exception
-
-abbrev TransM := ReaderT TransCtx $ StateT TransState MetaM
-
-@[inline] def TransM.run (x : TransM α) (ctx : TransCtx := {}) (s : TransState := {}) : MetaM (α × TransState) :=
-  x ctx |>.run s
-
-@[inline] def TransM.toIO (x : TransM α) (ctxCore : Lean.Core.Context) (sCore : Lean.Core.State) (ctx : TransCtx := {}) (s : TransState := {}) : IO (α × TransState) := do
-  let ((a, s), _, _) ← (x.run ctx s).toIO ctxCore sCore
-  pure (a, s)
-
-def withResetCtx : TransM α → TransM α := -- TODO reset lvlParams?
-  withReader fun ctx => { ctx with fvars := #[], lvlParams := default }
-
-def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
-  let lvlParams ← params.length.foldM (init := default) fun i curr =>  
-    pure $ curr.insert params[i]! i
-  withReader (fun ctx => { ctx with
-    lvlParams }) m
-
-def withFVars (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
-  let newFvars := (← read).fvars.append fvars
-  withReader (fun ctx => { ctx with
-    fvars := newFvars }) m
-
-namespace Encoding.Level
-
-  def toExpr : Level → TransM Dedukti.Expr
-    | .z          => pure $ .const `lvl.z
-    | .s l        => do pure $ .app (.const `lvl.s ) (← toExpr l)
-    | .max l1 l2  => do pure $ .appN (.const `lvl.max ) [(← toExpr l1), (← toExpr l2)]
-    | .imax l1 l2 => do pure $ .appN (.const `lvl.imax ) [(← toExpr l1), (← toExpr l2)]
-    | .var n      => do pure $ .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
-    -- | var n      => .app (.const `lvl.var ) (natToExpr n) -- TODO deep encoding
-
-end Encoding.Level
-
-def transLevel' : Lean.Level → TransM Level
+def fromLevel' : Lean.Level → TransM Level
   | .zero       => pure .z
-  | .succ l     => do pure $ .s (← transLevel' l)
-  | .max l1 l2  => do pure $ .max (← transLevel' l1) (← transLevel' l2)
-  | .imax l1 l2 => do pure $ .imax (← transLevel' l1) (← transLevel' l2)
+  | .succ l     => do pure $ .s (← fromLevel' l)
+  | .max l1 l2  => do pure $ .max (← fromLevel' l1) (← fromLevel' l2)
+  | .imax l1 l2 => do pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
   | .param p    => do
      let some i := (← read).lvlParams.find? p
       | throw $ .error default s!"unknown universe parameter {p} encountered"
@@ -70,59 +25,55 @@ def transLevel' : Lean.Level → TransM Level
 
   | .mvar _     => throw $ .error default "unexpected universe metavariable encountered"
 
-def transLevel (l : Lean.Level) : TransM Expr := do (← transLevel' l).toExpr
+def fromLevel (l : Lean.Level) : TransM Expr := do (← fromLevel' l).toExpr
 
-def fixLeanName (name : Name) : Name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
-
-def exprToLevel (expr : Lean.Expr) : TransM Level := do
+def levelFromExpr (expr : Lean.Expr) : TransM Level := do
   match expr with
-    | .sort l => pure $ ← transLevel' l
-    | _ => pure sorry
+    | .sort l => pure $ ← fromLevel' l
+    | _ => throw $ .error default s!"expected sort but encountered {expr.ctorName}"
     
-def inferLevel (e : Lean.Expr) : TransM Level := do
-  exprToLevel $ ← inferType e -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
+def levelFromInferredType (e : Lean.Expr) : TransM Level := do
+  levelFromExpr $ ← inferType e -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
 
-mutual
-  partial def transExprType (e : Lean.Expr) : TransM Expr := do
-    pure $ .appN (.const `enc.El) [← (← inferLevel e).toExpr, (← transExpr e)]
+partial def fromExpr : Lean.Expr → TransM Expr
+  | .bvar _ => throw $ .error default "unexpected bound variable encountered"
+  | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
+  | .const name lvls => do pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
+  | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
+  | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
+                              domVars.foldrM (init := (← withFVars domVars $ fromExpr bod)) fun _ (curr) => do
+                                pure (.lam curr)
+  | e@(.forallE ..) => forallTelescope e fun domVars img => do
+                              let (ret, _) ← domVars.size.foldRevM (init := (← withFVars domVars $ fromExpr img, ← levelFromExpr $ ← inferType img)) fun i (curr, s2) => do
+                                let domVar := domVars[i]!
+                                let dom ← inferType domVar
+                                let s1 ← levelFromInferredType dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
+                                let s3 := Level.imax s1 s2
+                                --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
+                                let ret ← withFVars domVars[:i] do 
+                                  pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr)])
+                                pure (ret, s3)
+                              pure ret
+  | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
+  | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
+  | .proj _ idx exp => pure $ .fixme "PROJ.FIXME" -- FIXME
+  | e@(.fvar ..) => do 
+                  let some i := (← read).fvars.indexOf? e | throw $ .error default s!"encountered unknown free variable {e}"
+                  pure $ .var ((← read).fvars.size - 1 - i)
+  | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
+  | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
 
-  partial def transExpr : Lean.Expr → TransM Expr
-    | .bvar _ => throw $ .error default "unexpected bound variable encountered"
-    | .sort lvl => do pure $ .app (.const `enc.Sort) (← transLevel lvl) -- FIXME
-    | .const name lvls => do pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM transLevel))
-    | .app fnc arg => do pure $ .app (← transExpr fnc) (← transExpr arg)
-    | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
-                                domVars.foldrM (init := (← withFVars domVars $ transExpr bod)) fun _ (curr) => do
-                                  pure (.lam curr)
-    | e@(.forallE ..) => forallTelescope e fun domVars img => do
-                                let (ret, _) ← domVars.size.foldRevM (init := (← withFVars domVars $ transExpr img, ← exprToLevel $ ← inferType img)) fun i (curr, s2) => do
-                                  let domVar := domVars[i]!
-                                  let dom ← inferType domVar
-                                  let s1 ← inferLevel dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
-                                  let s3 := Level.imax s1 s2
-                                  --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
-                                  let ret ← withFVars domVars[:i] do 
-                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← transExpr dom, (.lam curr)])
-                                  pure (ret, s3)
-                                pure ret
-    | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
-    | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
-    | .proj _ idx exp => pure $ .fixme "PROJ.FIXME" -- FIXME
-    | e@(.fvar ..) => do 
-                    let some i := (← read).fvars.indexOf? e | throw $ .error default s!"encountered unknown free variable {e}"
-                    pure $ .var ((← read).fvars.size - 1 - i)
-    | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
-    | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
-end
+partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
+  pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr e)]
 
-def transConst (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
+def constFromConstantInfo (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
   let name := fixLeanName cnst.name
-  let type ← transExprType cnst.type
+  let type ← fromExprAsType cnst.type
   let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
   match cnst with
   | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
   | .defnInfo     (val : Lean.DefinitionVal) => do
-    let value ← transExpr val.value
+    let value ← fromExpr val.value
     let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
     pure $ .definable name type [.mk 0 (.const name) value]
   | .thmInfo      (val : Lean.TheoremVal) => pure $ .static name (.fixme "THM.FIXME") -- FIXME
@@ -132,11 +83,10 @@ def transConst (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.l
   | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name type
   | .recInfo      (val : Lean.RecursorVal) => do pure $ .static name type
 
-def transEnv (env : Lean.Environment) : TransM Unit := do
-  env.constants.forM (fun _ const => do
-    match (← get).env.constMap.find? $ fixLeanName const.name with
-    | none => do
-      let constDk ← transConst const
-      modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName const.name) constDk} }
-    | some _ => sorry
+def translateEnv (env : Lean.Environment) : TransM Unit := do
+  env.constants.forM (fun _ cinfo => do
+    let const ← constFromConstantInfo cinfo
+    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
   )
+
+end Trans

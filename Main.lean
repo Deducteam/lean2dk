@@ -19,7 +19,7 @@ def main (args : List String) : IO UInt32 := do
     )
 
   -- translate elaborated Lean environment to Dedukti
-  let (_, {env := dkEnv}) ← ((transEnv leanEnv).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv}
+  let (_, {env := dkEnv}) ← ((Trans.translateEnv leanEnv).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv}
   -- Prod.fst <$> x.toIO { options := ppCtx.opts, currNamespace := ppCtx.currNamespace, openDecls := ppCtx.openDecls, fileName := "<PrettyPrinter>", fileMap := default }
   --                     { env := ppCtx.env, ngen := { namePrefix := `_pp_uniq } }
 )

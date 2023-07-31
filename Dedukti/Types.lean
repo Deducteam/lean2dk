@@ -29,6 +29,14 @@ mutual
     deriving Repr, Inhabited
 end
 
+namespace Const
+
+  def name : Const → Name
+    | .static (name : Name) .. => name 
+    | .definable (name : Name) .. => name
+
+end Const
+
 namespace Expr
 
 def piN (params : List Expr) (img : Expr) : Expr :=
@@ -43,23 +51,4 @@ structure Env where
   constMap : Std.RBMap Name Const compare
   deriving Inhabited
 
-def Const.name : Const → Name
-  | .static (name : Name) .. => name 
-  | .definable (name : Name) .. => name
-
 end Dedukti
-
-namespace Encoding
-
-  def natToExpr : Nat → Dedukti.Expr
-    | .zero => .const `nat.z
-    | .succ n => (.app (.const `nat.s) (natToExpr n))
-
-  inductive Level
-    | z      : Level
-    | s      : Level → Level
-    | max    : Level → Level → Level
-    | imax   : Level → Level → Level
-    | var    : Nat → Level
-
-end Encoding
