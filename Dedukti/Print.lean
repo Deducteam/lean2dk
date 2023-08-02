@@ -37,7 +37,7 @@ def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid nami
 
   `lvl.max,
   `lvl.imax,
-  `lvl.var,
+  `normalize.var,
 
   `enc.Univ,
   `enc.Sort,

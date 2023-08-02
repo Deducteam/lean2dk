@@ -21,7 +21,7 @@ namespace Encoding
       | .s l        => do pure $ .app (.const `lvl.s ) (← toExpr l)
       | .max l1 l2  => do pure $ .appN (.const `lvl.max ) [(← toExpr l1), (← toExpr l2)]
       | .imax l1 l2 => do pure $ .appN (.const `lvl.imax ) [(← toExpr l1), (← toExpr l2)]
-      | .var n      => do pure $ .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
+      | .var n      => do pure $ .app (.const `normalize.var ) (.var (((← read).lvlParams.size - n) + (← read).fvars.size - 1))
       -- | var n      => .app (.const `lvl.var ) (natToExpr n) -- TODO deep encoding
 
   end Level

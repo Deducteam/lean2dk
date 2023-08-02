@@ -1,21 +1,38 @@
-Lvl : Type.
+Lvl: Type.
 
-z : Lvl.
-s : Lvl -> Lvl.
-var : nat.Nat -> Lvl.
-def max : Lvl -> Lvl -> Lvl.
-def imax : Lvl -> Lvl -> Lvl.
+def z: Lvl.
+def s: Lvl -> Lvl.
+def max: Lvl -> Lvl -> Lvl.
+def imax: Lvl -> Lvl -> Lvl.
 
-[l1, l2] max (s l1) (s l2) --> s (max l1 l2).
+Set: Type.
+nil: Set.
+cons: Lvl -> Set -> Set.
 
-[l] max l z --> l.
-[l] max z l --> l.
-[l] max l l --> l.
+def merge: Set -> Set -> Set.
+[l] merge nil l --> l.
+[l1, l2, n] merge (cons n l1) l2 --> cons n (merge l1 l2).
 
-[l1, l2] imax l1 (s l2) --> max l1 (s l2).
-[l] imax l z --> z.
+def eq: Lvl -> Lvl -> bool.Bool.
+[ n ] eq n n --> bool.true.
+[] eq _ _ --> bool.true.
 
-[l] imax z l --> l.
-[l] imax l l --> l.
+def in: Lvl -> Set -> bool.Bool.
+[] in _ nil --> bool.false.
+[n, m, l] in n (cons m l) --> bool.or (eq n m) (in n l).
 
-[l1, l2, l3] imax l1 (max l2 l3) --> max (imax l1 l3) (imax l2 l3).
+def subset: Set -> Set -> bool.Bool.
+[] subset nil _ --> bool.true.
+[n, q, l] subset (cons n q) l --> bool.and (in n l) (subset q l).
+
+def eqset: Set -> Set -> bool.Bool.
+[l1, l2] eqset l1 l2 --> bool.and (subset l1 l2) (subset l2 l1).
+
+def leqset: Set -> Set -> bool.Bool.
+
+[] leqset nil _ --> bool.true.
+[] leqset (cons _ _) nil --> bool.false.
+[n, m, l1, l2] leqset (cons n l1) (cons m l2) --> bool.and (eq n m) (leqset l1 l2).
+
+def lqset: Set -> Set -> bool.Bool.
+[l1, l2] lqset l1 l2 --> bool.and (leqset l1 l2) (bool.not (eqset l1 l2)).

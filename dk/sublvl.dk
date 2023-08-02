@@ -1,0 +1,71 @@
+SubLvl: Type.
+
+def a: lvl.Set -> lvl.Lvl -> nat.Nat -> SubLvl.
+def b: lvl.Set -> nat.Nat -> SubLvl.
+
+def leq: SubLvl -> SubLvl -> bool.Bool.
+
+[] leq (b _ nat.z) (a _ _ _) --> bool.true.
+[] leq (a _ _ _) (b _ _) --> bool.false.
+[l1, l2, n, m] leq (b l1 n) (b l2 m) --> bool.and (lvl.subset l2 l1) (nat.leq n m).
+
+[l1, l2, n, m, x] leq (b l1 (nat.s n)) (a l2 x m) --> 
+  bool.and (lvl.subset l2 l1) (nat.leq n m)
+
+[l1, l2, n, m, x, y] leq (a l1 x n) (a l2 y m) -->
+  bool.and (lvl.subset l2 l1) (bool.and (lvl.eq x y) (nat.leq n m)).
+
+
+def eq: SubLvl -> SubLvl -> bool.Bool.
+
+[l1, l2, n, m] eq (b l1 n) (b l2 m) --> bool.and (nat.eq n m) (lvl.eqset l1 l2).
+[l1, l2, n, m, x, y] eq (a l1 x n) (a l2 y m) --> 
+  bool.and (nat.eq n m) (bool.and (lvl.eq x y) (lvl.eqset l1 l2)).
+[] eq (a _ _ _) (b _ _) --> bool.false.
+[] eq (b _ _) (a _ _ _) --> bool.true.
+
+
+def lq: SubLvl -> SubLvl -> bool.Bool.
+
+[l1, l2] lq l1 l2 --> bool.and (leq l1 l2) (bool.not (eq l1 l2)).
+
+
+def order: SubLvl -> SubLvl -> bool.Bool.
+[] order (a _ _ _) (b _ _) --> bool.true.
+[] order (b _ _) (a _ _ _) --> bool.false. 
+[l1, l2, n, m] order (b l1 n) (b l2 m) --> bool.or
+  (lvl.lqset l1 l2)
+  (bool.and (lvl.eqset l1 l2) (nat.leq n m)).
+
+[l1, l2, n, m, x, y] order (a l1 x n) (a l2 y m) --> bool.or
+  (lvl.lqset l1 l2)
+  (bool.and
+    (lvl.eqset l1 l2)
+    (bool.and (lvl.eq x y) (nat.leq n m))
+  ).
+
+Set: Type.
+nil: Set.
+cons: SubLvl -> Set -> Set.
+
+def iteset: bool.Bool -> Set -> Set -> Set.
+[n] iteset bool.true n _ --> n.
+[n] iteset bool.false _ n --> n.
+
+def add: Set -> SubLvl -> Set.
+[n] add nil n --> cons n nil.
+[n, m, l] add (cons n l) m --> iteset (eq n m) (cons n l) (iteset (order n m) (cons n (add l m)) (cons m (cons n l))).
+
+def s: Set -> Set.
+[] s nil --> nil.
+[l1, n, q] s (cons (b l1 n) q) --> cons (b l1 (nat.s n)) (s q).
+[l1, x, n, q] s (cons (a l1 x n) q) --> cons (a l1 x (nat.s n)) (s q).
+
+def maxhelper: Set -> SubLvl -> Set.
+[u] maxhelper nil u --> cons u nil.
+[u, l, v] maxhelper (cons u l) v --> iteset (leq v u) 
+  (add l u) 
+  (iteset (leq u v) 
+    (add l v) 
+    (add (maxhelper l v) u)
+  ).

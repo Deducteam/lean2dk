@@ -1,4 +1,73 @@
-Nat : Type.
+Nat: Type.
+z: Nat.
+s: Nat -> Nat.
+def max: Nat -> Nat -> Nat.
 
-z : Nat.
-s : Nat.
+[i] max i z --> i.
+[i] max z i --> i.
+[i, j] max (s i) (s j) --> s (max i j).
+
+def plus: Nat -> Nat -> Nat.
+[i] plus z i --> i.
+[i, j] plus (s i) j --> s (plus i j).
+
+
+def eq: Nat -> Nat -> bool.Bool.
+[] eq z z --> bool.true.
+[n] eq (s n) z --> bool.false.
+[m] eq z (s m) --> bool.false.
+[n, m] eq (s n) (s m) --> eq n m.
+
+def lq: Nat -> Nat -> bool.Bool.
+[] lq z z --> bool.false.
+[m] lq z (s m) --> bool.true.
+[m] lq (s m) z --> bool.false.
+[n, m] lq (s n) (s m) --> lq n m.
+
+
+def leq: Nat -> Nat -> bool.Bool.
+[n] leq z n --> bool.true.
+[m] leq (s m) z --> bool.false.
+[n, m] lq (s n) (s m) --> leq n m.
+
+
+def ite: bool.Bool -> Nat -> Nat -> Nat.
+[n] ite bool.true n _ --> n.
+[n] ite bool.false _ n --> n.
+
+
+Set: Type.
+nil: Set.
+cons: Nat -> Set -> Set.
+
+def iteset: bool.Bool -> Set -> Set -> Set.
+[n] iteset bool.true n _ --> n.
+[n] iteset bool.false _ n --> n.
+
+def add: Set -> Nat -> Set.
+[n] add nil n --> cons n nil.
+[n, m, l] add (cons n l) m --> iteset (eq n m) (cons n l) (iteset (lq n m) (cons n (add l m)) (cons m (cons n l))).
+
+def merge: Set -> Set -> Set.
+[l] merge nil l --> l.
+[l1, l2, n] merge (cons n l1) l2 --> merge l1 (add l2 n).
+
+def in: Nat -> Set -> bool.Bool.
+[] in _ nil --> bool.false.
+[n, m, l] in n (cons m l) --> bool.or (eq n m) (in n l).
+
+def subset: Set -> Set -> bool.Bool.
+[] subset nil _ --> bool.true.
+[n, q, l] subset (cons n q) l --> bool.and (in n l) (subset q l).
+
+def eqset: Set -> Set -> bool.Bool.
+[l1, l2] eqset l1 l2 --> bool.and (subset l1 l2) (subset l2 l1).
+
+def leqset: Set -> Set -> bool.Bool.
+
+[] leqset nil _ --> bool.true.
+[] leqset (cons _ _) nil --> bool.false.
+[n, m, l1, l2] leqset (cons n l1) (cons m l2) --> bool.or (lq n m) (bool.and (eq n m) (leqset l1 l2)).
+
+def lqset: Set -> Set -> bool.Bool.
+[l1, l2] lqset l1 l2 --> bool.and (leqset l1 l2) (bool.not (eqset l1 l2)).
