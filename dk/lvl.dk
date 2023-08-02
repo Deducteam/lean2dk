@@ -6,9 +6,16 @@ var : nat.Nat -> Lvl.
 def max : Lvl -> Lvl -> Lvl.
 def imax : Lvl -> Lvl -> Lvl.
 
-[l1, l2] imax l1 (s l2) --> max l1 (s l2).
-[l] imax l z --> z.
+[l1, l2] max (s l1) (s l2) --> s (max l1 l2).
+
 [l] max l z --> l.
 [l] max z l --> l.
+[l] max l l --> l.
+
+[l1, l2] imax l1 (s l2) --> max l1 (s l2).
+[l] imax l z --> z.
+
 [l] imax z l --> l.
 [l] imax l l --> l.
+
+[l1, l2, l3] imax l1 (max l2 l3) --> max (imax l1 l3) (imax l2 l3).
