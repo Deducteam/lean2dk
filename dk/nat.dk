@@ -28,7 +28,7 @@ def lq: Nat -> Nat -> bool.Bool.
 def leq: Nat -> Nat -> bool.Bool.
 [n] leq z n --> bool.true.
 [m] leq (s m) z --> bool.false.
-[n, m] lq (s n) (s m) --> leq n m.
+[n, m] leq (s n) (s m) --> leq n m.
 
 
 def ite: bool.Bool -> Nat -> Nat -> Nat.

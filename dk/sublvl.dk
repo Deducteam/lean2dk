@@ -22,7 +22,7 @@ def eq: SubLvl -> SubLvl -> bool.Bool.
 [l1, l2, n, m, x, y] eq (a l1 x n) (a l2 y m) --> 
   bool.and (nat.eq n m) (bool.and (lvl.eq x y) (lvl.eqset l1 l2)).
 [] eq (a _ _ _) (b _ _) --> bool.false.
-[] eq (b _ _) (a _ _ _) --> bool.true.
+[] eq (b _ _) (a _ _ _) --> bool.false.
 
 
 def lq: SubLvl -> SubLvl -> bool.Bool.
@@ -59,7 +59,6 @@ def add: Set -> SubLvl -> Set.
 def s: Set -> Set.
 [] s nil --> nil.
 [l1, n, q] s (cons (b l1 n) q) --> cons (b l1 (nat.s n)) (s q).
-[l1, x, n, q] s (cons (a l1 x n) q) --> cons (a l1 x (nat.s n)) (s q).
 
 def maxhelper: Set -> SubLvl -> Set.
 [u] maxhelper nil u --> cons u nil.
@@ -69,3 +68,5 @@ def maxhelper: Set -> SubLvl -> Set.
     (add l v) 
     (add (maxhelper l v) u)
   ).
+
+[l1, x, n, q] s (cons (a l1 x n) q) --> cons (a l1 x (nat.s n)) (maxhelper (s q) (b lvl.nil (nat.s nat.z))).
