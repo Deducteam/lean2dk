@@ -1,0 +1,39 @@
+def test1  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.s lvl.z))).
+def test11 := x:lvl.Lvl => (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s (lvl.z)))).
+def test12 := x:lvl.Lvl => (lvl.s (lvl.max (normalize.var x) (lvl.s (lvl.z)))).
+def test2  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) ((lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.z))).
+def test21 := x:lvl.Lvl => (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.z))).
+def test22 := x:lvl.Lvl => (lvl.s (lvl.max (normalize.var x) lvl.z)).
+
+#CHECK test1 == x:lvl.Lvl =>
+enc.Univ
+  (normalize.maxS
+     (sublvl.cons
+        (sublvl.a (lvl.cons x lvl.nil) x nat.z)
+        (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+
+#CHECK test11 == x:lvl.Lvl =>
+normalize.maxS
+  (sublvl.cons
+     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+     (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
+
+#CHECK test12 == x:lvl.Lvl =>
+normalize.maxS
+  (sublvl.cons
+     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+     (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
+
+#CHECK test2 == x:lvl.Lvl => enc.Univ (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons x lvl.nil) x nat.z) sublvl.nil)).
+
+#CHECK test21 == x:lvl.Lvl =>
+normalize.maxS
+  (sublvl.cons
+     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+     (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
+
+#CHECK test22 == x:lvl.Lvl =>
+normalize.maxS
+  (sublvl.cons
+     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+     (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
