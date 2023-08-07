@@ -13,4 +13,7 @@ noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
   Nat.rec a (fun _ sum => Nat.succ sum) b
 
 inductive Eq : α → α → Prop where
-  | refl (a : α) : Eq a a
+  | refl {a : α} : Eq a a
+#check Eq
+
+theorem zeroAdd (n : Nat) : Eq (Nat.add n Nat.zero) n := Eq.refl

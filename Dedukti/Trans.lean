@@ -72,11 +72,11 @@ def constFromConstantInfo (cnst : Lean.ConstantInfo) : TransM Const := withLvlPa
   let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
   match cnst with
   | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
-  | .defnInfo     (val : Lean.DefinitionVal) => do
+  | .defnInfo     (val : Lean.DefinitionVal)
+  | .thmInfo      (val : Lean.TheoremVal) => do
     let value ← fromExpr val.value
     let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
     pure $ .definable name type [.mk 0 (.const name) value]
-  | .thmInfo      (val : Lean.TheoremVal) => pure $ .static name (.fixme "THM.FIXME") -- FIXME
   | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
   | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
   | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type

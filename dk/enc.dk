@@ -2,6 +2,11 @@ Univ : lvl.Lvl -> Type.
 
 Sort : s:lvl.Lvl -> Univ (lvl.s s).
 
+def El : s:lvl.Lvl -> Univ s -> Type.
+
+Pi : s1:lvl.Lvl -> s2:lvl.Lvl -> s3:lvl.Lvl -> t:Univ s1 -> (El s1 t -> Univ s2) -> Univ s3.
+[s1, s2, s3, t, f] El s3 (Pi s1 s2 s3 t f) --> x:(El s1 t) -> (El s2 (f x)).
+
 (; --- implementation of `El (lvl.s l) l --> Univ l` rule + helpers --- ;)
 
 (; "frozen" operator (to prevent infinite rewrites) ;)
@@ -21,7 +26,6 @@ def getDefaultOptSublvlSet : OptSublvlSet -> (sublvl.Set -> OptSublvlSet) -> Opt
 [ls, f] getDefaultOptSublvlSet (some ls) f _ --> f ls.
 [d] getDefaultOptSublvlSet none _ d --> d.
 
-def El : s:lvl.Lvl -> Univ s -> Type.
 def El' : lvl.Lvl -> s:lvl.Lvl -> Univ s -> Type.
 (;[l] El (lvl.s (normalize.var l)) (Sort (normalize.var l)) --> Univ (normalize.var l).;)
 (;[l] El (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons l lvl.nil) l (nat.s nat.z)) sublvl.nil))
@@ -29,11 +33,8 @@ def El' : lvl.Lvl -> s:lvl.Lvl -> Univ s -> Type.
 def isSucc: sublvl.Set -> OptSublvlSet.
 [] isSucc sublvl.nil --> some sublvl.nil.
 [s, l, n, ls] isSucc (sublvl.cons (sublvl.a s l (nat.s n)) ls) --> getDefaultOptSublvlSet (isSucc ls) (ls' => some (sublvl.maxhelper ls' (sublvl.a s l n))) none.
-[s, n, ls] isSucc (sublvl.cons (sublvl.b s (nat.s n)) ls) --> getDefaultOptSublvlSet (isSucc ls) (ls' => some (sublvl.cons (sublvl.b s n) ls')) none.
+[s, n, ls] isSucc (sublvl.cons (sublvl.b s (nat.s n)) ls) --> getDefaultOptSublvlSet (isSucc ls) (ls' => some (sublvl.iteset (nat.eq n nat.z) ls' (sublvl.cons (sublvl.b s n) ls'))) none.
 
-[ls, sort] El (normalize.maxS ls) sort --> El' (getDefaultLvl (isSucc ls) (ls' => s (normalize.maxS ls')) (f (normalize.maxS ls))) (normalize.maxS ls) sort.
+[ls, sort] El (normalize.maxS ls) (Sort sort) --> El' (getDefaultLvl (isSucc ls) (ls' => s (normalize.maxS ls')) (f (normalize.maxS ls))) (normalize.maxS ls) (Sort sort).
 [l] El' (s l) _ (Sort l) --> Univ l.
 (; --- ;)
-
-Pi : s1:lvl.Lvl -> s2:lvl.Lvl -> s3:lvl.Lvl -> t:Univ s1 -> (El s1 t -> Univ s2) -> Univ s3.
-[s1, s2, s3, t, f] El s3 (Pi s1 s2 s3 t f) --> x:(El s1 t) -> (El s2 (f x)).
