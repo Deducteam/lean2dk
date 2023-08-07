@@ -3,10 +3,12 @@ DKCHECK      ?= dk check
 DKDEP        ?= dk dep
 SRC_FOLDER = .
 TEST_FOLDER = ./tests
-DKS = $(wildcard $(SRC_FOLDER)/*.dk)
-DKS_TEST = $(DKS) $(wildcard $(TEST_FOLDER)/*.dk)
+DKS = $(filter-out $(SRC_FOLDER)/out.dk, $(wildcard $(SRC_FOLDER)/*.dk))
+DK_OUT = out.dk
+DKS_TEST = $(wildcard $(TEST_FOLDER)/*.dk)
 DKOS = $(DKS:.dk=.dko)
-DKOS_TEST = $(DKS) $(DKS_TEST:.dk=.dko)
+DKO_OUT = out.dko
+DKOS_TEST = $(DKS_TEST:.dk=.dko)
 
 
 .PHONY: all check clean
@@ -25,7 +27,7 @@ test: depend
 	make actual_test
 
 # Check and compile the generated [.dk]
-actual_check: $(DKOS)
+actual_check: $(DKOS) $(DK_OUT)
 
 actual_test: $(DKOS) $(DKOS_TEST)
 

@@ -5,17 +5,26 @@ def s: Lvl -> Lvl.
 def max: Lvl -> Lvl -> Lvl.
 def imax: Lvl -> Lvl -> Lvl.
 
+def eq: Lvl -> Lvl -> bool.Bool.
+[ n ] eq n n --> bool.true.
+[] eq _ _ --> bool.true.
+
 Set: Type.
 nil: Set.
 cons: Lvl -> Set -> Set.
 
+def add: Lvl -> Set -> Set.
+
+def iteset: bool.Bool -> Set -> Set -> Set.
+[n] iteset bool.true n _ --> n.
+[n] iteset bool.false _ n --> n.
+
+[l] add l nil --> cons l nil.
+[l, l', ls] add l (cons l' ls) --> iteset (eq l l') (cons l' ls) (cons l' (add l ls)).
+
 def merge: Set -> Set -> Set.
 [l] merge nil l --> l.
-[l1, l2, n] merge (cons n l1) l2 --> cons n (merge l1 l2).
-
-def eq: Lvl -> Lvl -> bool.Bool.
-[ n ] eq n n --> bool.true.
-[] eq _ _ --> bool.true.
+[l1, l2, n] merge (cons n l1) l2 --> add n (merge l1 l2).
 
 def in: Lvl -> Set -> bool.Bool.
 [] in _ nil --> bool.false.

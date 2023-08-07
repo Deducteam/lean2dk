@@ -4,6 +4,7 @@ def maxS: sublvl.Set -> lvl.Lvl.
 
 [] lvl.z --> maxS sublvl.nil.
 
+[ls] var (maxS ls) --> maxS ls. (; TODO is this rule necessary? ;)
 [l] var l --> maxS (sublvl.cons (sublvl.a (lvl.cons l lvl.nil) l nat.z) sublvl.nil).
 
 [] lvl.s (maxS sublvl.nil) --> 

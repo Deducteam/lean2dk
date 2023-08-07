@@ -1,39 +1,82 @@
 def test1  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.s lvl.z))).
+def test1' := x:lvl.Lvl =>
+  enc.Univ
+    (normalize.maxS
+       (sublvl.cons
+          (sublvl.a (lvl.cons x lvl.nil) x nat.z)
+          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+#PRINT "test1 == test1'?".
+#ASSERT test1 == test1'.
+#CHECK test1 == test1'.
+
 def test11 := x:lvl.Lvl => (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s (lvl.z)))).
+def test11' := x:lvl.Lvl =>
+  normalize.maxS
+    (sublvl.cons
+       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+       (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
+#PRINT "test11 == test11'?".
+#ASSERT test11 == test11'.
+#CHECK test11 == test11'.
+
 def test12 := x:lvl.Lvl => (lvl.s (lvl.max (normalize.var x) (lvl.s (lvl.z)))).
+def test12' := x:lvl.Lvl =>
+  normalize.maxS
+    (sublvl.cons
+       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+       (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
+#PRINT "test12 == test12'?".
+#ASSERT test12 == test12'.
+#CHECK test12 == test12'.
+
 def test2  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) ((lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.z))).
+def test2' := x:lvl.Lvl => enc.Univ (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons x lvl.nil) x nat.z) sublvl.nil)).
+#PRINT "test2 == test2'?".
+#ASSERT test2 == test2'.
+#CHECK test2 == test2'.
+
 def test21 := x:lvl.Lvl => (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.z))).
+def test21' := x:lvl.Lvl =>
+  normalize.maxS
+    (sublvl.cons
+       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+       (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
+#PRINT "test21 == test21'?".
+#ASSERT test21 == test21'.
+#CHECK test21 == test21'.
+
 def test22 := x:lvl.Lvl => (lvl.s (lvl.max (normalize.var x) lvl.z)).
+def test22' := x:lvl.Lvl =>
+  normalize.maxS
+    (sublvl.cons
+       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+       (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
+#PRINT "test22 == test22'?".
+#ASSERT test22 == test22'.
+#CHECK test22 == test22'.
 
-#CHECK test1 == x:lvl.Lvl =>
-enc.Univ
-  (normalize.maxS
-     (sublvl.cons
-        (sublvl.a (lvl.cons x lvl.nil) x nat.z)
-        (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+def test31 := x:lvl.Lvl => enc.Univ (lvl.s (normalize.var x)).
+def test31' := x:lvl.Lvl =>
+  enc.Univ
+    (normalize.maxS
+       (sublvl.cons
+          (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+#PRINT "test22 == test22'?".
+#ASSERT test22 == test22'.
+#CHECK test22 == test22'.
 
-#CHECK test11 == x:lvl.Lvl =>
-normalize.maxS
-  (sublvl.cons
-     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-     (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
-
-#CHECK test12 == x:lvl.Lvl =>
-normalize.maxS
-  (sublvl.cons
-     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-     (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
-
-#CHECK test2 == x:lvl.Lvl => enc.Univ (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons x lvl.nil) x nat.z) sublvl.nil)).
-
-#CHECK test21 == x:lvl.Lvl =>
-normalize.maxS
-  (sublvl.cons
-     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-     (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
-
-#CHECK test22 == x:lvl.Lvl =>
-normalize.maxS
-  (sublvl.cons
-     (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-     (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
+def test3 := x:lvl.Lvl => 
+  enc.Univ
+    (lvl.imax
+       (lvl.s (normalize.var x))
+       (lvl.imax (normalize.var x) (lvl.imax (normalize.var x) (lvl.s lvl.z)))).
+def test3' := x:lvl.Lvl =>
+  enc.Univ
+    (normalize.maxS
+       (sublvl.cons
+          (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
+          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+#PRINT "test3 == test3'?".
+#ASSERT test3 == test3'.
+#CHECK test3 == test3'.
