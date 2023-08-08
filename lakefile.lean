@@ -46,9 +46,9 @@ script test do
   | .error e => IO.eprintln e; return 1
   | .ok stdout =>
     IO.FS.writeFile "stdout" stdout
-    printCmd "echo ---------------- out.dk"
-    printCmd "cat dk/out.dk"
-    printCmd "echo ----------------"
+    -- printCmd "echo ---------------- out.dk"
+    -- printCmd "cat dk/out.dk"
+    -- printCmd "echo ----------------"
     match ← runCmd "make check -C dk" with
     | .error e => IO.eprintln e; return 1
     | .ok _ => IO.println "tests passed!"; return 0

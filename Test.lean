@@ -12,8 +12,9 @@ inductive Nat : Type where
 noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
   Nat.rec a (fun _ sum => Nat.succ sum) b
 
-inductive Eq : α → α → Prop where
+inductive Eq {α : Type} : α → α → Prop where
   | refl {a : α} : Eq a a
-#check Eq
+#print Eq.rec
+#print Eq.refl
 
 theorem zeroAdd (n : Nat) : Eq (Nat.add n Nat.zero) n := Eq.refl

@@ -66,7 +66,7 @@ partial def fromExpr : Lean.Expr → TransM Expr
 partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
   pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr e)]
 
-def constFromConstantInfo (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
+def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
   let name := fixLeanName cnst.name
   let type ← fromExprAsType cnst.type
   let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
@@ -81,11 +81,27 @@ def constFromConstantInfo (cnst : Lean.ConstantInfo) : TransM Const := withLvlPa
   | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
   | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
   | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name type
-  | .recInfo      (val : Lean.RecursorVal) => do pure $ .static name type
+  | .recInfo      (val : Lean.RecursorVal) => do
+    let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
+    let rules ← val.rules.foldlM (init := []) fun acc r => do
+      IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
+      lambdaTelescope r.rhs fun domVars bod => do
+        let vars := cnst.levelParams.length + domVars.size
+        let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
+        let numCtorLvls := ctor.levelParams.length
+        let ctorLvls := (lvls[:numCtorLvls]).toArray.toList -- FIXME D:
+        let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
+        let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ #[ctorApp]
+
+        let lhs := (← withFVars domVars $ fromExpr lhsLean)
+        let rhs := (← withFVars domVars $ fromExpr bod)
+
+        pure $ .mk vars lhs rhs :: acc
+    pure $ .definable name type rules
 
 def translateEnv (env : Lean.Environment) : TransM Unit := do
   env.constants.forM (fun _ cinfo => do
-    let const ← constFromConstantInfo cinfo
+    let const ← constFromConstantInfo env cinfo
     modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
   )
 
