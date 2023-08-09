@@ -87,14 +87,23 @@ def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : 
       IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
       lambdaTelescope r.rhs fun domVars bod => do
         let vars := cnst.levelParams.length + domVars.size
+        let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
         let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
+
+        let outType ← inferType bod
+        let outFn := outType.getAppFn
+        -- sanity check
+        if outFn != motiveArg then throw $ .error default s!"output type is not motive application" 
+        let outArgs := outType.getAppArgs
+        let idxArgs := outArgs[:outArgs.size - 1]
+
         let numCtorLvls := ctor.levelParams.length
         let ctorLvls := (lvls[:numCtorLvls]).toArray.toList -- FIXME D:
         let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
-        let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ #[ctorApp]
+        let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorApp]
 
-        let lhs := (← withFVars domVars $ fromExpr lhsLean)
-        let rhs := (← withFVars domVars $ fromExpr bod)
+        let lhs := (← withFVars domVars $ withNoLVarNormalize $ fromExpr lhsLean)
+        let rhs := (← withFVars domVars $ withNoLVarNormalize $ fromExpr bod)
 
         pure $ .mk vars lhs rhs :: acc
     pure $ .definable name type rules

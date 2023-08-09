@@ -5,6 +5,7 @@ open Dedukti
 namespace Trans
 
 structure Context where
+  noLVarNormalize : Bool := false -- don't perform universe level normalization on variables; used in e.g. recursor rewrite rules
   fvars : Array Lean.Expr := default
   lvlParams  : Std.RBMap Name Nat compare := default
   deriving Inhabited
@@ -24,6 +25,9 @@ abbrev TransM := ReaderT Context $ StateT State MetaM
 
 def withResetCtx : TransM α → TransM α :=
   withReader fun ctx => { ctx with fvars := #[], lvlParams := default }
+
+def withNoLVarNormalize : TransM α → TransM α :=
+  withReader fun ctx => { ctx with noLVarNormalize := true }
 
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
   let lvlParams ← params.length.foldM (init := default) fun i curr =>  

@@ -37,11 +37,11 @@ def printCmd (cmd : String) : ScriptM PUnit := do
 def runCmd (cmd : String) : ScriptM $ Except String String := do
   let {exitCode, stderr, stdout} ← runCmd' cmd
   if exitCode != 0
-    then return .error stderr
+    then return .error (stdout ++ "\n" ++ stderr)
     else return .ok (stdout ++ "\n" ++ stderr)
 
-script test do
-  IO.println "running tests..."
+script trans do
+  IO.println "running translation + check..."
   match ← runCmd "lake exe lean2dk" with
   | .error e => IO.eprintln e; return 1
   | .ok stdout =>
@@ -52,3 +52,15 @@ script test do
     match ← runCmd "make check -C dk" with
     | .error e => IO.eprintln e; return 1
     | .ok _ => IO.println "tests passed!"; return 0
+
+script test do
+  IO.println "running tests..."
+  match ← runCmd "make test -C dk" with
+  | .error e => IO.eprintln e; return 1
+  | .ok out => IO.println out; IO.println "tests passed!"; return 0
+
+script check do
+  IO.println "running check..."
+  match ← runCmd "make check -C dk" with
+  | .error e => IO.eprintln e; return 1
+  | .ok _ => IO.println "check passed!"; return 0
