@@ -35,39 +35,71 @@ def levelFromExpr (expr : Lean.Expr) : TransM Level := do
 def levelFromInferredType (e : Lean.Expr) : TransM Level := do
   levelFromExpr $ ← inferType e -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
 
-partial def fromExpr : Lean.Expr → TransM Expr
-  | .bvar _ => throw $ .error default "unexpected bound variable encountered"
-  | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
-  | .const name lvls => do pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
-  | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
-  | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
-                              domVars.foldrM (init := (← withFVars domVars $ fromExpr bod)) fun _ (curr) => do
-                                pure (.lam curr)
-  | e@(.forallE ..) => forallTelescope e fun domVars img => do
-                              let (ret, _) ← domVars.size.foldRevM (init := (← withFVars domVars $ fromExpr img, ← levelFromExpr $ ← inferType img)) fun i (curr, s2) => do
-                                let domVar := domVars[i]!
-                                let dom ← inferType domVar
-                                let s1 ← levelFromInferredType dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
-                                let s3 := Level.imax s1 s2
-                                --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
-                                let ret ← withFVars domVars[:i] do 
-                                  pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr)])
-                                pure (ret, s3)
-                              pure ret
-  | .letE name typ exp bod _ => pure $ .fixme "LETE.FIXME" -- FIXME
-  | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
-  | .proj _ idx exp => pure $ .fixme "PROJ.FIXME" -- FIXME
-  | e@(.fvar ..) => do 
-                  let some i := (← read).fvars.indexOf? e | throw $ .error default s!"encountered unknown free variable {e}"
-                  pure $ .var ((← read).fvars.size - 1 - i)
-  | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
-  | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
+mutual
+  partial def fromExpr : Lean.Expr → TransM Expr
+    | .bvar _ => throw $ .error default "unexpected bound variable encountered"
+    | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
+    | .const name lvls => do pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
+    | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
+    | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
+                                domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
+                                  pure (.lam curr)
+    | e@(.forallE ..) => forallTelescope e fun domVars img => do
+                                let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromExpr $ ← inferType img)) fun i (curr, s2) => do
+                                  let domVar := domVars[i]!
+                                  let dom ← inferType domVar
+                                  let s1 ← levelFromInferredType dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
+                                  let s3 := Level.imax s1 s2
+                                  --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
+                                  let ret ← withTypedFVars domVars[:i] do -- TODO probably not necessary to do `withTypedFVars` here (can get domain from (← read).fvarTypes, and the sorts shouldn't contain free variables)
+                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr)])
+                                  pure (ret, s3)
+                                pure ret
+    | .letE name typ val bod _ =>
+      withLetDecl name typ val fun x => do
+        let bod := bod.instantiate1 x
 
-partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
-  pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr e)]
+        let type ← (← read).fvars.foldrM (init := ← fromExprAsType typ) fun fvar acc => do
+          let name := fvar.fvarId!.name
+          let some dom ← do pure $ (← read).fvarTypes.find? name | throw $ .error default s!"could not find type of free variable"
+          pure $ .pi dom acc
 
-def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const := withLvlParams cnst.levelParams do
-  let name := fixLeanName cnst.name
+        let val ← fromExpr val
+        let letName ← nextLetName
+        let const := .definable letName type [.mk (← read).fvars.size (.const letName) val]
+        modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
+        withLet (x.fvarId!.name) $ fromExpr bod
+    | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
+    | .proj _ idx exp => pure $ .fixme "PROJ.FIXME" -- FIXME
+    | e@(.fvar id) => do 
+                    match (← read).fvars.indexOf? e with
+                    | some i => pure $ .var ((← read).fvars.size - 1 - i)
+                    | _ =>
+                      match (← read).lvars.find? id.name with
+                      | some (nFvars, constName) =>
+                        List.range nFvars |>.foldlM (init := (.const constName))
+                          fun app i => do pure $ .app app $ .var $ (← read).fvars.size - 1 - i
+                      | _ => throw $ .error default s!"encountered unknown free variable {e}"
+    | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
+    | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
+
+  partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
+    pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr e)]
+
+  partial def withTypedFVars {α : Type} (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
+    let (fvarTypes, fvars) ← fvars.foldlM (init := (default, #[])) fun (fvarTypes, fvars) fvar => do
+      let xDecl ← getFVarLocalDecl fvar
+      let leanType ← match xDecl with
+      | .cdecl (type := t) .. => pure t
+      | _ => throw $ .error default s!"encountered unexpected let variable in list of free variables"
+      let type ← withFVars fvarTypes fvars $ fromExprAsType leanType -- TODO thunk this?
+      pure (fvarTypes.insert fvar.fvarId!.name type, fvars.push fvar)
+    withFVars fvarTypes fvars m
+
+end
+
+def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const := withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
+  let name := (← get).constName
   let type ← fromExprAsType cnst.type
   let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
   match cnst with
@@ -84,7 +116,7 @@ def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : 
   | .recInfo      (val : Lean.RecursorVal) => do
     let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
     let rules ← val.rules.foldlM (init := []) fun acc r => do
-      IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
+      -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
       lambdaTelescope r.rhs fun domVars bod => do
         let vars := cnst.levelParams.length + domVars.size
         let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
@@ -102,16 +134,16 @@ def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : 
         let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
         let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorApp]
 
-        let lhs := (← withFVars domVars $ withNoLVarNormalize $ fromExpr lhsLean)
-        let rhs := (← withFVars domVars $ withNoLVarNormalize $ fromExpr bod)
+        let (lhs, rhs) ← withTypedFVars domVars $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
 
         pure $ .mk vars lhs rhs :: acc
     pure $ .definable name type rules
 
 def translateEnv (env : Lean.Environment) : TransM Unit := do
   env.constants.forM (fun _ cinfo => do
-    let const ← constFromConstantInfo env cinfo
-    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
+    if !cinfo.name.isInternal then
+      let const ← constFromConstantInfo env cinfo
+      modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
   )
 
 end Trans
