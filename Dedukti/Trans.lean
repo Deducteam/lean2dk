@@ -66,7 +66,8 @@ mutual
 
         let val ← fromExpr val
         let letName ← nextLetName
-        let const := .definable letName type [.mk (← read).fvars.size (.const letName) val]
+        let fvars :=  (← read).fvars.toList
+        let const := .definable letName type [.mk fvars.length (.appN (.const letName) (← fvars.mapM (fun fvar => fromExpr fvar))) val]
         modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
         withLet (x.fvarId!.name) $ fromExpr bod
     | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME

@@ -25,15 +25,33 @@ inductive Bool : Type where
 
 /--
 Let expression test case; note that you cannot just replace a let expression with a beta-redex,
-E.g. the following does not typecheck:
-noncomputable def letTest : Prop :=
-  (fun x =>
-  Eq
-  (Bool.rec (motive := fun b => Bool.rec (motive := fun _ => Type) Nat Bool b) Nat.zero Bool.true x)
-  Bool.true) Bool.true
+E.g. the following does not typecheck in Lean:
+  noncomputable def letTest : Prop :=
+    (fun x =>
+    Eq
+    (Bool.rec (motive := fun b => Bool.rec (motive := fun _ => Type) Nat Bool b) Nat.zero Bool.true x)
+    Bool.true
+    ) Bool.true
+or in Dedukti:
+  def letTest : enc.El (lvl.s lvl.z) (enc.Sort lvl.z).
+  [] letTest -->
+  (x:(enc.El (lvl.s lvl.z) Bool) =>
+    Eq Bool
+    Bool_true
+    (Bool_rec (lvl.s lvl.z)
+      (x0 => Bool_rec (lvl.s (lvl.s lvl.z)) (x1 => enc.Sort (lvl.s lvl.z)) Nat Bool x0) Nat_zero Bool_true x))
+  Bool_true.
 -/
 noncomputable def letTest : Prop :=
   let x := Bool.true
   Eq
-  (Bool.rec (motive := fun b => Bool.rec (motive := fun _ => Type) Nat Bool b) Nat.zero Bool.true x)
   Bool.true
+  (Bool.rec (motive := fun b => Bool.rec (motive := fun _ => Type) Nat Bool b) Nat.zero Bool.true x)
+
+noncomputable def letTestBinders : Nat → Bool → Prop :=
+  fun n b =>
+  let x := Nat.succ (Bool.rec Nat.zero n b)
+  let y := (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
+  Eq
+  y
+  (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
