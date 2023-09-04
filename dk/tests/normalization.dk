@@ -66,7 +66,7 @@ def test31' := x:lvl.Lvl =>
 #ASSERT test22 == test22'.
 #CHECK test22 == test22'.
 
-def test3 := x:lvl.Lvl => 
+def test3 := x:lvl.Lvl =>
   enc.Univ
     (lvl.imax
        (lvl.s (normalize.var x))
@@ -80,3 +80,34 @@ def test3' := x:lvl.Lvl =>
 #PRINT "test3 == test3'?".
 #ASSERT test3 == test3'.
 #CHECK test3 == test3'.
+
+
+(; multiple universe variables; AC of sublevel lists ;)
+def test4 := x:lvl.Lvl => y:lvl.Lvl =>
+  enc.Univ (lvl.max (normalize.var y) (normalize.var x)).
+def test4' := x:lvl.Lvl => y:lvl.Lvl =>
+  enc.Univ
+    (normalize.maxS
+       (sublvl.cons
+          (sublvl.a (lvl.cons x lvl.nil) x nat.z)
+          (sublvl.cons (sublvl.a (lvl.cons y lvl.nil) y nat.z) sublvl.nil))).
+#PRINT "test4 == test4'?".
+#ASSERT test4 == test4'.
+#CHECK test4 == test4'.
+
+(; multiple universe variables; AC of level lists ;)
+def test5 := x:lvl.Lvl => y:lvl.Lvl =>
+  enc.Univ (lvl.imax (lvl.imax (lvl.s (lvl.s lvl.z)) (normalize.var y)) (normalize.var x)).
+def test5' := x:lvl.Lvl => y:lvl.Lvl =>
+  enc.Univ
+    (normalize.maxS
+      (sublvl.cons
+        (sublvl.b (lvl.cons y (lvl.cons x lvl.nil)) (nat.s (nat.s nat.z)))
+      (sublvl.cons
+        (sublvl.a (lvl.cons y (lvl.cons x lvl.nil)) y nat.z)
+      (sublvl.cons
+        (sublvl.a (lvl.cons x lvl.nil) x nat.z)
+      sublvl.nil)))).
+#PRINT "test5 == test5'?".
+#ASSERT test5 == test5'.
+#CHECK test5 == test5'.

@@ -10,7 +10,7 @@ def leq: SubLvl -> SubLvl -> bool.Bool.
 [l1, l2, n, m] leq (b l1 n) (b l2 m) --> bool.and (lvl.subset l2 l1) (nat.leq n m).
 
 [l1, l2, n, m, x] leq (b l1 (nat.s n)) (a l2 x m) --> 
-  bool.and (lvl.subset l2 l1) (nat.leq n m)
+  bool.and (lvl.subset l2 l1) (nat.leq n m).
 
 [l1, l2, n, m, x, y] leq (a l1 x n) (a l2 y m) -->
   bool.and (lvl.subset l2 l1) (bool.and (lvl.eq x y) (nat.leq n m)).
@@ -46,27 +46,26 @@ def order: SubLvl -> SubLvl -> bool.Bool.
 
 Set: Type.
 nil: Set.
-cons: SubLvl -> Set -> Set.
+singleton: SubLvl -> Set.
+defac union [Set].
+def cons: SubLvl -> Set -> Set.
+[l, s] cons s l --> union (singleton s) l.
 
 def iteset: bool.Bool -> Set -> Set -> Set.
 [n] iteset bool.true n _ --> n.
 [n] iteset bool.false _ n --> n.
 
-def add: Set -> SubLvl -> Set.
-[n] add nil n --> cons n nil.
-[n, m, l] add (cons n l) m --> iteset (eq n m) (cons n l) (iteset (order n m) (cons n (add l m)) (cons m (cons n l))).
-
 def s: Set -> Set.
 [] s nil --> nil.
-[l1, n, q] s (cons (b l1 n) q) --> cons (b l1 (nat.s n)) (s q).
+[l1, n, q] s (union (singleton (b l1 n)) q) --> cons (b l1 (nat.s n)) (s q).
 
 def maxhelper: Set -> SubLvl -> Set.
-[u] maxhelper nil u --> cons u nil.
-[u, l, v] maxhelper (cons u l) v --> iteset (leq v u) 
-  (add l u) 
-  (iteset (leq u v) 
-    (add l v) 
-    (add (maxhelper l v) u)
+[s] maxhelper nil s --> cons s nil.
+[s, l, v] maxhelper (union (singleton s) l) v --> iteset (leq v s) 
+  (cons s l)
+  (iteset (leq s v)
+    (cons v l)
+    (cons s (maxhelper l v))
   ).
 
-[l1, x, n, q] s (cons (a l1 x n) q) --> cons (a l1 x (nat.s n)) (maxhelper (s q) (b lvl.nil (nat.s nat.z))).
+[l1, x, n, q] s (union (singleton (a l1 x n)) q) --> cons (a l1 x (nat.s n)) (maxhelper (s q) (b lvl.nil (nat.s nat.z))).

@@ -33,8 +33,8 @@ def El' : lvl.Lvl -> s:lvl.Lvl -> Univ s -> Type.
 def isSucc: bool.Bool -> sublvl.Set -> OptSublvlSet.
 [] isSucc bool.true sublvl.nil --> some sublvl.nil.
 [] isSucc bool.false sublvl.nil --> none.
-[b, s, l, n, ls] isSucc b (sublvl.cons (sublvl.a s l (nat.s n)) ls) --> getDefaultOptSublvlSet (isSucc b ls) (ls' => some (sublvl.maxhelper ls' (sublvl.a s l n))) none.
-[b, s, n, ls] isSucc b (sublvl.cons (sublvl.b s (nat.s n)) ls) --> getDefaultOptSublvlSet (isSucc (bool.or b (lvl.eqset s lvl.nil)) ls) (ls' => some (sublvl.iteset (nat.eq n nat.z) ls' (sublvl.cons (sublvl.b s n) ls'))) none.
+[b, s, l, n, ls] isSucc b (sublvl.union (sublvl.singleton (sublvl.a s l (nat.s n))) ls) --> getDefaultOptSublvlSet (isSucc b ls) (ls' => some (sublvl.maxhelper ls' (sublvl.a s l n))) none.
+[b, s, n, ls] isSucc b (sublvl.union (sublvl.singleton (sublvl.b s (nat.s n))) ls) --> getDefaultOptSublvlSet (isSucc (bool.or b (lvl.eqset s lvl.nil)) ls) (ls' => some (sublvl.iteset (nat.eq n nat.z) ls' (sublvl.cons (sublvl.b s n) ls'))) none.
 
 [ls, sort] El (normalize.maxS ls) (Sort sort) --> El' (getDefaultLvl (isSucc bool.false ls) (ls' => s (normalize.maxS ls')) (f (normalize.maxS ls))) (normalize.maxS ls) (Sort sort).
 [l] El' (s l) _ (Sort l) --> Univ l.

@@ -10,11 +10,11 @@ def maxS: sublvl.Set -> lvl.Lvl.
 [] lvl.s (maxS sublvl.nil) --> 
 maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
 
-[u, q] lvl.s (maxS (sublvl.cons u q)) --> 
+[u, q] lvl.s (maxS (sublvl.union (sublvl.singleton u) q)) --> 
 maxS (sublvl.s (sublvl.cons u q)).
 
 [l] lvl.max (maxS l) (maxS sublvl.nil) --> maxS l.
-[u, l1, l2] lvl.max (maxS l1) (maxS (sublvl.cons u l2)) --> 
+[u, l1, l2] lvl.max (maxS l1) (maxS (sublvl.union (sublvl.singleton u) l2)) --> 
   lvl.max 
   (maxS (sublvl.maxhelper l1 u)) 
   (maxS l2).
@@ -45,10 +45,10 @@ lvl.max
 def rulehelper: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
 [u] rulehelper u (maxS sublvl.nil) --> 
   maxS sublvl.nil.
-[u, v, q] rulehelper u (maxS (sublvl.cons v q)) --> 
+[u, v, q] rulehelper u (maxS (sublvl.union (sublvl.singleton v) q)) --> 
   lvl.max (srule u v) (rulehelper u (maxS q)).
 
 
 [t] lvl.imax (maxS sublvl.nil) t --> t.
-[u, q, t] lvl.imax (maxS (sublvl.cons u q)) t --> 
+[u, q, t] lvl.imax (maxS (sublvl.union (sublvl.singleton u) q)) t --> 
   lvl.max (rulehelper u t) (lvl.imax (maxS q) t).
