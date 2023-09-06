@@ -41,14 +41,13 @@ lvl.max
   (maxS (sublvl.cons (sublvl.a (lvl.merge l1 l2) x n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.a l2 y m) sublvl.nil)).
 
-
 def rulehelper: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
 [u] rulehelper u (maxS sublvl.nil) --> 
   maxS sublvl.nil.
 [u, v, q] rulehelper u (maxS (sublvl.union (sublvl.singleton v) q)) --> 
   lvl.max (srule u v) (rulehelper u (maxS q)).
 
-
-[t] lvl.imax (maxS sublvl.nil) t --> t.
+[] lvl.imax _ (maxS sublvl.nil) --> maxS sublvl.nil.
+[t] lvl.imax (maxS sublvl.nil) t --> t. (; FIXME should just be nil? ;)
 [u, q, t] lvl.imax (maxS (sublvl.union (sublvl.singleton u) q)) t --> 
   lvl.max (rulehelper u t) (lvl.imax (maxS q) t).

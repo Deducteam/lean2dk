@@ -6,7 +6,7 @@ open Dedukti
 namespace Trans
 
 structure Context where
-  noLVarNormalize : Bool := false -- don't perform universe level normalization on variables; used in e.g. recursor rewrite rules
+  inRecRule : Bool := false -- don't perform universe level normalization on variables; used in e.g. recursor rewrite rules
   fvars     : Array Lean.Expr := default
   fvarTypes : Std.RBMap Name Expr compare := default
   lvars     : Std.RBMap Name (Nat × Name) compare := default
@@ -37,8 +37,8 @@ def withNewConstant (constName : Name) (m : TransM α) : TransM α := do
 def withResetCtx : TransM α → TransM α :=
   withReader fun ctx => { ctx with fvars := #[], lvlParams := default }
 
-def withNoLVarNormalize : TransM α → TransM α :=
-  withReader fun ctx => { ctx with noLVarNormalize := true }
+def withInRecRule : TransM α → TransM α :=
+  withReader fun ctx => { ctx with inRecRule := true }
 
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
   let lvlParams ← params.length.foldM (init := default) fun i curr =>  

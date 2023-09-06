@@ -111,3 +111,9 @@ def test5' := x:lvl.Lvl => y:lvl.Lvl =>
 #PRINT "test5 == test5'?".
 #ASSERT test5 == test5'.
 #CHECK test5 == test5'.
+def test6 := x:sublvl.Set => (lvl.imax (lvl.s (normalize.var (normalize.maxS x))) (lvl.imax (normalize.var (normalize.maxS x)) lvl.z)).
+#EVAL test6.
+def test7 := x:sublvl.Set => (lvl.imax (lvl.s (normalize.var (normalize.maxS x))) (lvl.imax (normalize.var (normalize.maxS x)) (lvl.imax (lvl.s lvl.z) (normalize.var (normalize.maxS x))))).
+#EVAL test7.
+def test7':= x:sublvl.Set => (lvl.imax (lvl.s (normalize.var (normalize.maxS x))) (lvl.imax (normalize.var (normalize.maxS x)) (lvl.imax (lvl.imax (lvl.s lvl.z) (normalize.var (normalize.maxS x))) (lvl.imax (lvl.s lvl.z) (normalize.var (normalize.maxS x)))))).
+#EVAL test7'.

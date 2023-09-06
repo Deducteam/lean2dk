@@ -22,10 +22,11 @@ namespace Encoding
       | .max l1 l2  => do pure $ .appN (.const `lvl.max ) [(← toExpr l1), (← toExpr l2)]
       | .imax l1 l2 => do pure $ .appN (.const `lvl.imax ) [(← toExpr l1), (← toExpr l2)]
       | .var n      => do 
-        if (← read).noLVarNormalize then 
-          pure $ .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
+        let var := .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
+        if (← read).inRecRule then 
+          pure $ .app (.const `normalize.maxS) var
         else
-          pure $ .app (.const `normalize.var ) (.var (((← read).lvlParams.size - n) + (← read).fvars.size - 1))
+          pure $ .app (.const `normalize.var) var
       -- | var n      => .app (.const `lvl.var ) (natToExpr n) -- TODO deep encoding
 
   end Level

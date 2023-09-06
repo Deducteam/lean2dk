@@ -135,7 +135,7 @@ def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : 
         let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
         let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorApp]
 
-        let (lhs, rhs) ← withTypedFVars domVars $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
+        let (lhs, rhs) ← withTypedFVars domVars $ withInRecRule $ do pure (← fromExpr lhsLean, ← fromExpr bod)
 
         pure $ .mk vars lhs rhs :: acc
     pure $ .definable name type rules
