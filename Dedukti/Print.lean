@@ -154,6 +154,7 @@ mutual
         let decl := s!"def {name} : {← type.print}."
         let rules := "\n".intercalate (← rules.mapM (·.print))
         pure s!"{decl}\n{rules}"
+      | .extRule (rule : Rule) => rule.print
 
     modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString}
     -- dbg_trace s!"\tprinted: {const.name}"

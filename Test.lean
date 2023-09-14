@@ -74,6 +74,10 @@ noncomputable def letTestBinders : Nat → Bool → Prop :=
 
 -- def multiUnivTest (T1 : Sort u) (T2 : Sort v) : Sort v := T2
 
--- structure PLift (α : Sort u) : Type u where
---   up :: down : α
--- #check PLift.rec
+structure Struct : Type where
+  mk :: elem : Nat 
+
+-- test: eta
+-- test: eta for structures
+
+-- theorem projTest : Eq (Struct.elem (Struct.mk Nat.zero)) Nat.zero := Eq.refl

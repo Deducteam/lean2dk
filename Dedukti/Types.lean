@@ -27,6 +27,7 @@ mutual
   inductive Const where
     | static (name : Name) (type : Expr) 
     | definable (name : Name) (type : Expr) (rules : List Rule)
+    | extRule (rule : Rule) -- used for defining e.g. recursor projections
     deriving Repr, Inhabited
 end
 
@@ -35,6 +36,7 @@ namespace Const
   def name : Const → Name
     | .static (name : Name) .. => name 
     | .definable (name : Name) .. => name
+    | .extRule .. => `RULE -- FIXME
 
 end Const
 

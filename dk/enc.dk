@@ -10,3 +10,31 @@ Pi : s1:lvl.Lvl -> s2:lvl.Lvl -> s3:lvl.Lvl -> t:Univ s1 -> (El s1 t -> Univ s2)
 [s1, s2, s3, t, f] El s3 (Pi s1 s2 _ t f) --> x:(El s1 t) -> (El s2 (f x)).
 
 [l] El _ (Sort l) --> Univ l.
+
+(; --- projections --- ;)
+
+def StructProjType :  l : lvl.Lvl -> t : Univ l -> idx : nat.Nat -> Type. (; note StructProjType is zero-indexed w.r.t. vector position ;)
+
+Vec      : l : lvl.Lvl -> t : Univ l -> nat.Nat -> Type.
+Vec_nil  : l : lvl.Lvl -> t : Univ l -> n : nat.Nat -> Vec l t nat.z.
+Vec_cons : l : lvl.Lvl -> t : Univ l -> n : nat.Nat -> Vec l t n -> StructProjType l t n -> Vec l t (nat.s n).
+
+def StructProj :      l : lvl.Lvl -> t : Univ l -> idx : nat.Nat -> El l t -> StructProjType l t idx.
+
+SVec    : l : lvl.Lvl -> Univ l -> nat.Nat -> Type.
+SVec_mk : l : lvl.Lvl -> t : Univ l -> n : nat.Nat -> El l t -> Vec l t n -> SVec l t n.
+def SVec_cons : l : lvl.Lvl -> t : Univ l -> n : nat.Nat -> SVec l t n -> StructProjType l t n -> SVec l t (nat.s n).
+[l, t, n, q, v] SVec_cons l t (nat.s n) (SVec_mk l t (nat.s n) q v) (StructProj l t (nat.s n) q) -->
+(SVec_mk l t (nat.s (nat.s n)) q (Vec_cons l t (nat.s (nat.s n)) v (StructProj l t (nat.s n) q))).
+
+def get :             l : lvl.Lvl -> t : Univ l -> n : nat.Nat -> Vec l t n -> idx : nat.Nat -> StructProjType l t idx.
+[l, t, n, v, x] get l t (nat.s n) (Vec_cons l t n v x _) n --> x.
+[l, t, n, idx, v, x] get l t (nat.s n) (Vec_cons l t n v x _) idx --> get l t n v idx.
+
+def StructNumFields : l : lvl.Lvl -> t : Univ l -> nat.Nat.
+
+StructCtor :      l : lvl.Lvl -> t : Univ l -> Vec l t (StructNumFields l t) -> El l t.
+
+[l, t, idx, v] StructProj l t idx (StructCtor l t v) --> get l t (StructNumFields l t) v idx.
+
+(; --- ;)
