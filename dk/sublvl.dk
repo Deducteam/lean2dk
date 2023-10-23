@@ -5,7 +5,7 @@ def b: lvl.Set -> nat.Nat -> SubLvl.
 
 Set: Type.
 nil: Set.
-singleton: SubLvl -> Set.
+def singleton: SubLvl -> Set.
 defac union [Set].
 def cons: SubLvl -> Set -> Set.
 [l, s] cons s l --> union (singleton s) l.

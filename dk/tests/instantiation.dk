@@ -1,0 +1,48 @@
+#REQUIRE normalize.
+
+(; single sublvl substitution ;)
+def test1  := z:lvl.Lvl => (x:lvl.Lvl => normalize.var x) (normalize.var z).
+def test1' := z:lvl.Lvl =>
+    (normalize.maxS
+      (sublvl.cons (sublvl.a (lvl.cons z lvl.nil) z nat.z) sublvl.nil)).
+#PRINT "test1 == test1'?".
+#ASSERT test1 == test1'.
+#CHECK test1 == test1'.
+
+(; nil sublvls substitution ;)
+def test2  := (x:lvl.Lvl => normalize.var x) lvl.z.
+def test2' := normalize.maxS sublvl.nil.
+#PRINT "test2 == test2'?".
+#ASSERT test2 == test2'.
+#CHECK test2 == test2'.
+
+(; multiple sublvls substitution ;)
+def test3  := z:lvl.Lvl => (x:lvl.Lvl => normalize.var x) (lvl.max (lvl.s lvl.z) (normalize.var z)).
+def test3' := z:lvl.Lvl =>
+    (normalize.maxS
+       (sublvl.cons
+          (sublvl.a (lvl.cons z lvl.nil) z nat.z)
+          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+#PRINT "test3 == test3'?".
+#ASSERT test3 == test3'.
+#CHECK test3 == test3'.
+
+(; parallel substitution ;)
+def test4  := a:lvl.Lvl => b:lvl.Lvl => c:lvl.Lvl => d:lvl.Lvl =>
+  (x:lvl.Lvl => y:lvl.Lvl => sublvl.cons (sublvl.b (lvl.cons x (lvl.cons y lvl.nil)) (nat.s nat.z)) sublvl.nil) 
+    (normalize.maxS (sublvl.cons (sublvl.b (lvl.cons a lvl.nil) (nat.s nat.z)) (sublvl.cons (sublvl.b (lvl.cons b lvl.nil) (nat.s nat.z)) sublvl.nil)))
+    (normalize.maxS (sublvl.cons (sublvl.b (lvl.cons c lvl.nil) (nat.s nat.z)) (sublvl.cons (sublvl.b (lvl.cons d lvl.nil) (nat.s nat.z)) sublvl.nil)))
+    .
+def test4' := a:lvl.Lvl => b:lvl.Lvl => c:lvl.Lvl => d:lvl.Lvl =>
+  (sublvl.cons
+    (sublvl.b (lvl.cons a (lvl.cons c lvl.nil)) (nat.s nat.z))
+  (sublvl.cons
+    (sublvl.b (lvl.cons a (lvl.cons d lvl.nil)) (nat.s nat.z))
+  (sublvl.cons
+    (sublvl.b (lvl.cons b (lvl.cons c lvl.nil)) (nat.s nat.z))
+  (sublvl.cons
+    (sublvl.b (lvl.cons b (lvl.cons d lvl.nil)) (nat.s nat.z))
+    sublvl.nil)))).
+#PRINT "test4 == test4'?".
+#ASSERT test4 == test4'.
+#CHECK test4 == test4'.

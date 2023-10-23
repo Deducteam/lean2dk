@@ -48,9 +48,6 @@ def msunion : Set -> sSet -> Set.
 
 [l, l'] union (multi l) (multi l') --> multi (sunionboth l l').
 
-
-
-
 def iteset: bool.Bool -> Set -> Set -> Set.
 [n] iteset bool.true n _ --> n.
 [n] iteset bool.false _ n --> n.

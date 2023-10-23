@@ -111,3 +111,5 @@ def test5' := x:lvl.Lvl => y:lvl.Lvl =>
 #PRINT "test5 == test5'?".
 #ASSERT test5 == test5'.
 #CHECK test5 == test5'.
+
+(; #EVAL u:lvl.Lvl => v:lvl.Lvl => w:lvl.Lvl => lvl.s (lvl.imax (lvl.imax (normalize.var u) (normalize.var v)) (lvl.imax (lvl.imax (normalize.var u) (normalize.var v)) (normalize.var w))). ;)
