@@ -78,12 +78,3 @@ def subset: Set -> Set -> bool.Bool.
 
 def eqset: Set -> Set -> bool.Bool.
 [l1, l2] eqset l1 l2 --> bool.and (subset l1 l2) (subset l2 l1).
-
-def leqset: Set -> Set -> bool.Bool.
-
-[] leqset nil _ --> bool.true.
-[] leqset (union (singleton _) _) nil --> bool.false.
-[n, m, l1, l2] leqset (union (singleton n) l1) (union (singleton m) l2) --> bool.and (eq n m) (leqset l1 l2).
-
-def lqset: Set -> Set -> bool.Bool.
-[l1, l2] lqset l1 l2 --> bool.and (leqset l1 l2) (bool.not (eqset l1 l2)).

@@ -29,21 +29,6 @@ def lq: SubLvl -> SubLvl -> bool.Bool.
 
 [l1, l2] lq l1 l2 --> bool.and (leq l1 l2) (bool.not (eq l1 l2)).
 
-
-def order: SubLvl -> SubLvl -> bool.Bool.
-[] order (a _ _ _) (b _ _) --> bool.true.
-[] order (b _ _) (a _ _ _) --> bool.false. 
-[l1, l2, n, m] order (b l1 n) (b l2 m) --> bool.or
-  (lvl.lqset l1 l2)
-  (bool.and (lvl.eqset l1 l2) (nat.leq n m)).
-
-[l1, l2, n, m, x, y] order (a l1 x n) (a l2 y m) --> bool.or
-  (lvl.lqset l1 l2)
-  (bool.and
-    (lvl.eqset l1 l2)
-    (bool.and (lvl.eq x y) (nat.leq n m))
-  ).
-
 Set: Type.
 nil: Set.
 singleton: SubLvl -> Set.
