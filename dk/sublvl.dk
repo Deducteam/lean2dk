@@ -3,18 +3,6 @@ SubLvl: Type.
 def a: lvl.Set -> lvl.Lvl -> nat.Nat -> SubLvl.
 def b: lvl.Set -> nat.Nat -> SubLvl.
 
-def leq: SubLvl -> SubLvl -> bool.Bool.
-
-[] leq (b _ nat.nnil) (a _ _ _) --> bool.true.
-[] leq (a _ _ _) (b _ _) --> bool.false.
-[l1, l2, n, m] leq (b l1 n) (b l2 m) --> bool.and (lvl.subset l2 l1) (nat.leq n m).
-
-[l1, l2, n, m, x] leq (b l1 (nat.nunion nat.nnil n)) (a l2 x m) --> 
-  bool.and (lvl.subset l2 l1) (nat.leq n m).
-
-[l1, l2, n, m, x, y] leq (a l1 x n) (a l2 y m) -->
-  bool.and (lvl.subset l2 l1) (bool.and (lvl.eq x y) (nat.leq n m)).
-
 Set: Type.
 nil: Set.
 singleton: SubLvl -> Set.
@@ -26,17 +14,26 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 [n] iteset bool.true n _ --> n.
 [n] iteset bool.false _ n --> n.
 
+(; comparing b _ _ with b _ _ ;)
+[s, n, sls] union (singleton (b s n)) (union (singleton (b s n)) sls) --> union (singleton (b s n)) sls.
+[s, s', n, sls] union (singleton (b (lvl.union s s') n)) (union (singleton (b s n)) sls) --> union (singleton (b s n)) sls.
+[s, n, n', sls] union (singleton (b s n)) (union (singleton (b s (nat.nunion n n'))) sls) --> union (singleton (b s (nat.nunion n n'))) sls.
+[s, s', n, n', sls] union (singleton (b (lvl.union s s') n)) (union (singleton (b s (nat.nunion n n'))) sls) --> union (singleton (b s (nat.nunion n n'))) sls.
+
+(; comparing b _ _ with a _ _ _ ;)
+[s, l, n, sls] union (singleton (b _ nat.nnil)) (union (singleton (a s l n)) sls) --> union (singleton (a s l n)) sls.
+[s, l, n, sls] union (singleton (b s n)) (union (singleton (a s l n)) sls) --> union (singleton (a s l n)) sls.
+[s, s', l, n, sls] union (singleton (b (lvl.union s s') n)) (union (singleton (a s l n)) sls) --> union (singleton (a s l n)) sls.
+[s, l, n, n', sls] union (singleton (b s n)) (union (singleton (a s l (nat.nunion n n'))) sls) --> union (singleton (a s l (nat.nunion n n'))) sls.
+[s, s', l, n, n', sls] union (singleton (b (lvl.union s s') n)) (union (singleton (a s l (nat.nunion n n'))) sls) --> union (singleton (a s l (nat.nunion n n'))) sls.
+
+(; comparing a _ _ _ with a _ _ _ ;)
+[s, l, n, sls] union (singleton (a s l n)) (union (singleton (a s l n)) sls) --> union (singleton (a s l n)) sls.
+[s, s', l, n, sls] union (singleton (a (lvl.union s s') l n)) (union (singleton (a s l n)) sls) --> union (singleton (a s l n)) sls.
+[s, l, n, n', sls] union (singleton (a s l n)) (union (singleton (a s l (nat.nunion n n'))) sls) --> union (singleton (a s l (nat.nunion n n'))) sls.
+[s, s', l, n, n', sls] union (singleton (a (lvl.union s s') l n)) (union (singleton (a s l (nat.nunion n n'))) sls) --> union (singleton (a s l (nat.nunion n n'))) sls.
+
 def s: Set -> Set.
 [] s nil --> nil.
 [l1, n, q] s (union (singleton (b l1 n)) q) --> cons (b l1 (nat.s n)) (s q).
-
-def maxhelper: Set -> SubLvl -> Set.
-[s] maxhelper nil s --> cons s nil.
-[s, l, v] maxhelper (union (singleton s) l) v --> iteset (leq v s) 
-  (cons s l)
-  (iteset (leq s v)
-    (cons v l)
-    (cons s (maxhelper l v))
-  ).
-
-[l1, x, n, q] s (union (singleton (a l1 x n)) q) --> cons (a l1 x (nat.s n)) (maxhelper (s q) (b lvl.nil (nat.s nat.z))).
+[l1, x, n, q] s (union (singleton (a l1 x n)) q) --> cons (a l1 x (nat.s n)) (cons (b lvl.nil (nat.s nat.z)) (s q)).

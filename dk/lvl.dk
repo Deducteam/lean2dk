@@ -5,10 +5,6 @@ def s: Lvl -> Lvl.
 def max: Lvl -> Lvl -> Lvl.
 def imax: Lvl -> Lvl -> Lvl.
 
-def eq: Lvl -> Lvl -> bool.Bool.
-[ n ] eq n n --> bool.true. (; FIXME non-confluent ;)
-[] eq _ _ --> bool.false.
-
 Set: Type.
 nil: Set.
 singleton: Lvl -> Set.
@@ -44,7 +40,7 @@ def msunion : Set -> sSet -> Set.
 
 [l, lvl] union (singleton lvl) (multi l) --> msunion (singleton lvl) l.
 [l, s, s'] union (union s s') (multi l) --> msunion (union s s') l.
-[l] union nil (multi l) --> msunion nil l. (;TODO does this potentially introduce multiple nils? ;)
+[l] union nil (multi l) --> msunion nil l.
 
 [l, lvl] union (multi l) (singleton lvl) --> msunion (singleton lvl) l.
 [l, s, s'] union (multi l) (union s s') --> msunion (union s s') l.
@@ -55,26 +51,20 @@ def msunion : Set -> sSet -> Set.
 
 
 
-def add: Lvl -> Set -> Set.
-
 def iteset: bool.Bool -> Set -> Set -> Set.
 [n] iteset bool.true n _ --> n.
 [n] iteset bool.false _ n --> n.
 
-[l] add l nil --> cons l nil.
-[l, l', ls] add l (union (singleton l') ls) --> iteset (eq l l') (cons l' ls) (cons l' (add l ls)).
+[l, ls] union (singleton l) (union (singleton l) ls) --> (union (singleton l) ls).
 
 def merge: Set -> Set -> Set.
 [l] merge nil l --> l.
-[l1, l2, n] merge (union (singleton n) l1) l2 --> add n (merge l1 l2).
-
-def in: Lvl -> Set -> bool.Bool.
-[] in _ nil --> bool.false.
-[n, m, l] in n (union (singleton m) l) --> bool.or (eq n m) (in n l).
+[l1, l2, n] merge (union (singleton n) l1) l2 --> cons n (merge l1 l2).
 
 def subset: Set -> Set -> bool.Bool.
 [] subset nil _ --> bool.true.
-[n, q, l] subset (union (singleton n) q) l --> bool.and (in n l) (subset q l).
+[n, q] subset (union (singleton n) q) nil --> bool.false
+[n, q, q'] subset (union (singleton n) q) (union (singleton n) q') --> subset q q'.
 
 def eqset: Set -> Set -> bool.Bool.
 [l1, l2] eqset l1 l2 --> bool.and (subset l1 l2) (subset l2 l1).
