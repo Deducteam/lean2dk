@@ -5,11 +5,11 @@ def b: lvl.Set -> nat.Nat -> SubLvl.
 
 def leq: SubLvl -> SubLvl -> bool.Bool.
 
-[] leq (b _ nat.z) (a _ _ _) --> bool.true.
+[] leq (b _ nat.nnil) (a _ _ _) --> bool.true.
 [] leq (a _ _ _) (b _ _) --> bool.false.
 [l1, l2, n, m] leq (b l1 n) (b l2 m) --> bool.and (lvl.subset l2 l1) (nat.leq n m).
 
-[l1, l2, n, m, x] leq (b l1 (nat.s n)) (a l2 x m) --> 
+[l1, l2, n, m, x] leq (b l1 (nat.nunion nat.nnil n)) (a l2 x m) --> 
   bool.and (lvl.subset l2 l1) (nat.leq n m).
 
 [l1, l2, n, m, x, y] leq (a l1 x n) (a l2 y m) -->

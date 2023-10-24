@@ -1,34 +1,39 @@
 Nat: Type.
-z: Nat.
-s: Nat -> Nat.
+nnil: Nat.
+defac nunion [Nat].
+
+def z: Nat.
+[] z --> nnil.
+def s: Nat -> Nat.
+[n] s n --> nunion z n.
 def max: Nat -> Nat -> Nat.
 
-[i] max i z --> i.
-[i] max z i --> i.
-[i, j] max (s i) (s j) --> s (max i j).
+[i] max i nnil --> i.
+[i] max nnil i --> i.
+[i, j] max (nunion nnil i) (nunion nnil j) --> s (max i j).
 
 def plus: Nat -> Nat -> Nat.
-[i] plus z i --> i.
-[i, j] plus (s i) j --> s (plus i j).
+[i] plus nnil i --> i.
+[i, j] plus (nunion nnil i) j --> s (plus i j).
 
 
 def eq: Nat -> Nat -> bool.Bool.
-[] eq z z --> bool.true.
-[n] eq (s n) z --> bool.false.
-[m] eq z (s m) --> bool.false.
-[n, m] eq (s n) (s m) --> eq n m.
+[] eq nnil nnil --> bool.true.
+[n] eq (nunion nnil n) nnil --> bool.false.
+[m] eq nnil (nunion nnil m) --> bool.false.
+[n, m] eq (nunion nnil n) (nunion nnil m) --> eq n m.
 
 def lq: Nat -> Nat -> bool.Bool.
-[] lq z z --> bool.false.
-[m] lq z (s m) --> bool.true.
-[m] lq (s m) z --> bool.false.
-[n, m] lq (s n) (s m) --> lq n m.
+[] lq nnil nnil --> bool.false.
+[m] lq nnil (nunion nnil m) --> bool.true.
+[m] lq (nunion nnil m) nnil --> bool.false.
+[n, m] lq (nunion nnil n) (nunion nnil m) --> lq n m.
 
 
 def leq: Nat -> Nat -> bool.Bool.
-[n] leq z n --> bool.true.
-[m] leq (s m) z --> bool.false.
-[n, m] leq (s n) (s m) --> leq n m.
+[n] leq nnil n --> bool.true.
+[m] leq (nunion nnil m) nnil --> bool.false.
+[n, m] leq (nunion nnil n) (nunion nnil m) --> leq n m.
 
 
 def ite: bool.Bool -> Nat -> Nat -> Nat.
