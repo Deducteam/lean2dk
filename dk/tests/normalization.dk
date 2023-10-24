@@ -1,3 +1,13 @@
+def mysubset: lvl.Set -> lvl.Set -> bool.Bool.
+[s] mysubset s s --> bool.true.
+[s, s'] mysubset s (lvl.union s s') --> bool.true.
+
+def test6 := x:lvl.Lvl => y:lvl.Lvl => z:lvl.Lvl => 
+mysubset
+  (lvl.union (lvl.singleton x) (lvl.union (lvl.singleton y) (lvl.union (lvl.singleton z) lvl.nil)))
+  (lvl.union (lvl.singleton x) (lvl.union (lvl.singleton z) (lvl.union (lvl.singleton z) (lvl.union (lvl.singleton y) lvl.nil)))).
+#EVAL test6.
+
 def test1  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.s lvl.z))).
 def test1' := x:lvl.Lvl =>
   enc.Univ
