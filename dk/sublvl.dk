@@ -15,20 +15,6 @@ def leq: SubLvl -> SubLvl -> bool.Bool.
 [l1, l2, n, m, x, y] leq (a l1 x n) (a l2 y m) -->
   bool.and (lvl.subset l2 l1) (bool.and (lvl.eq x y) (nat.leq n m)).
 
-
-def eq: SubLvl -> SubLvl -> bool.Bool.
-
-[l1, l2, n, m] eq (b l1 n) (b l2 m) --> bool.and (nat.eq n m) (lvl.eqset l1 l2).
-[l1, l2, n, m, x, y] eq (a l1 x n) (a l2 y m) --> 
-  bool.and (nat.eq n m) (bool.and (lvl.eq x y) (lvl.eqset l1 l2)).
-[] eq (a _ _ _) (b _ _) --> bool.false.
-[] eq (b _ _) (a _ _ _) --> bool.false.
-
-
-def lq: SubLvl -> SubLvl -> bool.Bool.
-
-[l1, l2] lq l1 l2 --> bool.and (leq l1 l2) (bool.not (eq l1 l2)).
-
 Set: Type.
 nil: Set.
 singleton: SubLvl -> Set.
