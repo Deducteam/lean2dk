@@ -13,11 +13,7 @@ maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
 [u, q] lvl.s (maxS (sublvl.union (sublvl.singleton u) q)) --> 
 maxS (sublvl.s (sublvl.cons u q)).
 
-[l] lvl.max (maxS l) (maxS sublvl.nil) --> maxS l.
-[u, l1, l2] lvl.max (maxS l1) (maxS (sublvl.union (sublvl.singleton u) l2)) --> 
-  lvl.max 
-  (maxS (sublvl.cons u l1))
-  (maxS l2).
+[l, l'] lvl.max (maxS l) (maxS l') --> maxS (sublvl.union l l').
 
 def srule: sublvl.SubLvl -> sublvl.SubLvl -> lvl.Lvl.
 

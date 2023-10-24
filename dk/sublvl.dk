@@ -33,6 +33,10 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 [s, l, n, n', sls] union (singleton (a s l n)) (union (singleton (a s l (nat.nunion n n'))) sls) --> union (singleton (a s l (nat.nunion n n'))) sls.
 [s, s', l, n, n', sls] union (singleton (a (lvl.union s s') l n)) (union (singleton (a s l (nat.nunion n n'))) sls) --> union (singleton (a s l (nat.nunion n n'))) sls.
 
+(; remove duplicates (e.g. nils) ;)
+[sl, sls] union sl (union sl sls) --> union sl sls.
+[sl] union sl sl --> sl.
+
 def s: Set -> Set.
 [] s nil --> nil.
 [l1, n, q] s (union (singleton (b l1 n)) q) --> cons (b l1 (nat.s n)) (s q).

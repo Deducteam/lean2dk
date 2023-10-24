@@ -55,7 +55,9 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 [n] iteset bool.true n _ --> n.
 [n] iteset bool.false _ n --> n.
 
-[l, ls] union (singleton l) (union (singleton l) ls) --> (union (singleton l) ls).
+(; remove duplicates (e.g. duplicate level variables, nils) ;)
+[l, s] union l (union l s) --> union l s.
+[l] union l l --> l.
 
 def merge: Set -> Set -> Set.
 [l] merge nil l --> l.
