@@ -58,11 +58,3 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 (; remove duplicates (e.g. duplicate level variables, nils) ;)
 [l, s] union l (union l s) --> union l s.
 [l] union l l --> l.
-
-def subset: Set -> Set -> bool.Bool.
-[] subset nil _ --> bool.true.
-[n, q] subset (union (singleton n) q) nil --> bool.false
-[n, q, q'] subset (union (singleton n) q) (union (singleton n) q') --> subset q q'.
-
-def eqset: Set -> Set -> bool.Bool.
-[l1, l2] eqset l1 l2 --> bool.and (subset l1 l2) (subset l2 l1).

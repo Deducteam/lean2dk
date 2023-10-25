@@ -2,18 +2,8 @@ def var: lvl.Lvl -> lvl.Lvl.
 
 def maxS: sublvl.Set -> lvl.Lvl.
 
-[] lvl.z --> maxS sublvl.nil.
-
 [ls] var (maxS ls) --> maxS ls. (; TODO is this rule necessary? ;)
 [l] var l --> maxS (sublvl.cons (sublvl.a (lvl.cons l lvl.nil) l nat.z) sublvl.nil).
-
-[] lvl.s (maxS sublvl.nil) --> 
-maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
-
-[u, q] lvl.s (maxS (sublvl.union (sublvl.singleton u) q)) --> 
-maxS (sublvl.s (sublvl.cons u q)).
-
-[l, l'] lvl.max (maxS l) (maxS l') --> maxS (sublvl.union l l').
 
 def srule: sublvl.SubLvl -> sublvl.SubLvl -> lvl.Lvl.
 
@@ -37,14 +27,8 @@ lvl.max
   (maxS (sublvl.cons (sublvl.a (lvl.union l1 l2) x n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.a l2 y m) sublvl.nil)).
 
-
 def rulehelper: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
 [u] rulehelper u (maxS sublvl.nil) --> 
   maxS sublvl.nil.
 [u, v, q] rulehelper u (maxS (sublvl.union (sublvl.singleton v) q)) --> 
   lvl.max (srule u v) (rulehelper u (maxS q)).
-
-
-[t] lvl.imax (maxS sublvl.nil) t --> t.
-[u, q, t] lvl.imax (maxS (sublvl.union (sublvl.singleton u) q)) t --> 
-  lvl.max (rulehelper u t) (lvl.imax (maxS q) t).

@@ -7,35 +7,19 @@ def El : s:lvl.Lvl -> Univ s -> Type.
 Pi : s1:lvl.Lvl -> s2:lvl.Lvl -> s3:lvl.Lvl -> t:Univ s1 -> (El s1 t -> Univ s2) -> Univ s3.
 [s1, s2, s3, t, f] El s3 (Pi s1 s2 s3 t f) --> x:(El s1 t) -> (El s2 (f x)).
 
-(; --- implementation of `El (lvl.s l) l --> Univ l` rule + helpers --- ;)
+[l] El _ (Sort l) --> Univ l.
 
-(; "frozen" operator (to prevent infinite rewrites) ;)
-f : lvl.Lvl -> lvl.Lvl.
-(; "frozen" succ ;)
-s : lvl.Lvl -> lvl.Lvl.
+(; --- universe level normalization rewrite rules --- ;)
 
-OptSublvlSet : Type.
-some : sublvl.Set -> OptSublvlSet.
-none : OptSublvlSet.
+[] lvl.z --> normalize.maxS sublvl.nil.
 
-def getDefaultLvl : OptSublvlSet -> (sublvl.Set -> lvl.Lvl) -> lvl.Lvl -> lvl.Lvl.
-[ls, f] getDefaultLvl (some ls) f _ --> f ls.
-[d] getDefaultLvl none _ d --> d.
+[] lvl.s (normalize.maxS sublvl.nil) --> 
+normalize.maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
+[u, q] lvl.s (normalize.maxS (sublvl.union (sublvl.singleton u) q)) --> 
+normalize.maxS (sublvl.s (sublvl.cons u q)).
 
-def getDefaultOptSublvlSet : OptSublvlSet -> (sublvl.Set -> OptSublvlSet) -> OptSublvlSet -> OptSublvlSet.
-[ls, f] getDefaultOptSublvlSet (some ls) f _ --> f ls.
-[d] getDefaultOptSublvlSet none _ d --> d.
+[l, l'] lvl.max (normalize.maxS l) (normalize.maxS l') --> normalize.maxS (sublvl.union l l').
 
-def El' : lvl.Lvl -> s:lvl.Lvl -> Univ s -> Type.
-(;[l] El (lvl.s (normalize.var l)) (Sort (normalize.var l)) --> Univ (normalize.var l).;)
-(;[l] El (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons l lvl.nil) l (nat.s nat.z)) sublvl.nil))
-  (enc.Sort (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons l lvl.nil) l nat.z) sublvl.nil))) --> Univ (normalize.var l).;)
-def isSucc: bool.Bool -> sublvl.Set -> OptSublvlSet.
-[] isSucc bool.true sublvl.nil --> some sublvl.nil.
-[] isSucc bool.false sublvl.nil --> none.
-[b, s, l, n, ls] isSucc b (sublvl.union (sublvl.singleton (sublvl.a s l (nat.nunion nat.nnil n))) ls) --> getDefaultOptSublvlSet (isSucc b ls) (ls' => some (sublvl.cons (sublvl.a s l n) ls')) none.
-[b, s, n, ls] isSucc b (sublvl.union (sublvl.singleton (sublvl.b s (nat.nunion nat.nnil n))) ls) --> getDefaultOptSublvlSet (isSucc (bool.or b (lvl.eqset s lvl.nil)) ls) (ls' => some (sublvl.iteset (nat.eq n nat.nnil) ls' (sublvl.cons (sublvl.b s n) ls'))) none.
-
-[ls, sort] El (normalize.maxS ls) (Sort sort) --> El' (getDefaultLvl (isSucc bool.false ls) (ls' => s (normalize.maxS ls')) (f (normalize.maxS ls))) (normalize.maxS ls) (Sort sort).
-[l] El' (s l) _ (Sort l) --> Univ l.
-(; --- ;)
+[t] lvl.imax (normalize.maxS sublvl.nil) t --> t.
+[u, q, t] lvl.imax (normalize.maxS (sublvl.union (sublvl.singleton u) q)) t --> 
+  lvl.max (normalize.rulehelper u t) (lvl.imax (normalize.maxS q) t).
