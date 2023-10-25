@@ -19,22 +19,22 @@ def srule: sublvl.SubLvl -> sublvl.SubLvl -> lvl.Lvl.
 
 [l1, l2, n, m, x] srule (sublvl.a l1 x n) (sublvl.b l2 m) -->
 lvl.max 
-  (maxS (sublvl.cons (sublvl.a (lvl.merge l1 l2) x n) sublvl.nil))
+  (maxS (sublvl.cons (sublvl.a (lvl.union l1 l2) x n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.b l2 m) sublvl.nil)).
 
 [l1, l2, n, m] srule (sublvl.b l1 n) (sublvl.b l2 m) -->
 lvl.max 
-  (maxS (sublvl.cons (sublvl.b (lvl.merge l1 l2) n) sublvl.nil))
+  (maxS (sublvl.cons (sublvl.b (lvl.union l1 l2) n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.b l2 m) sublvl.nil)).
 
 [l1, l2, n, m, x] srule (sublvl.b l1 n) (sublvl.a l2 x m) -->
 lvl.max 
-  (maxS (sublvl.cons (sublvl.b (lvl.merge l1 l2) n) sublvl.nil))
+  (maxS (sublvl.cons (sublvl.b (lvl.union l1 l2) n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.a l2 x m) sublvl.nil)).
 
 [l1, l2, n, m, x, y] srule (sublvl.a l1 x n) (sublvl.a l2 y m) -->
 lvl.max 
-  (maxS (sublvl.cons (sublvl.a (lvl.merge l1 l2) x n) sublvl.nil))
+  (maxS (sublvl.cons (sublvl.a (lvl.union l1 l2) x n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.a l2 y m) sublvl.nil)).
 
 

@@ -59,10 +59,6 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 [l, s] union l (union l s) --> union l s.
 [l] union l l --> l.
 
-def merge: Set -> Set -> Set.
-[l] merge nil l --> l.
-[l1, l2, n] merge (union (singleton n) l1) l2 --> cons n (merge l1 l2).
-
 def subset: Set -> Set -> bool.Bool.
 [] subset nil _ --> bool.true.
 [n, q] subset (union (singleton n) q) nil --> bool.false
