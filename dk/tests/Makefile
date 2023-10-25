@@ -14,7 +14,7 @@ all: check
 
 # Generate the dependencies of [.dk] files
 depend:
-	$(DKDEP) -I $(SRC_FOLDER) $(TEST_FOLDER)/*.dk > .depend
+	$(DKDEP) -I $(SRC_FOLDER) $(DKS) $(DKS_TEST) > .depend
 
 # Make sure .depend is generated then do the actual check
 check: depend
