@@ -9,13 +9,13 @@ def not: Bool -> Bool.
 
 def and: Bool -> Bool -> Bool.
 [] and true true --> true.
-[b] and false b --> false.
-[b] and b false --> false. 
+[] and false _ --> false.
+[] and _ false --> false. 
 
 def or: Bool -> Bool -> Bool.
 [] or false false --> false.
-[b] or true b --> true.
-[b] or b true --> true. 
+[] or true _ --> true.
+[] or _ true --> true. 
 
 
 def eq: Bool -> Bool -> Bool.

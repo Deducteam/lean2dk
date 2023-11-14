@@ -1,3 +1,6 @@
+#REQUIRE lvl.
+#REQUIRE sublvl.
+
 fromSubLvl: sublvl.SubLvl -> lvl.Lvl.
 
 def sSetFromSubLvlSet: sublvl.Set -> lvl.sSet.

@@ -1,3 +1,4 @@
+#REQUIRE bool.
 Nat: Type.
 nnil: Nat.
 defac nunion [Nat].
@@ -19,20 +20,20 @@ def plus: Nat -> Nat -> Nat.
 
 def eq: Nat -> Nat -> bool.Bool.
 [] eq nnil nnil --> bool.true.
-[n] eq (nunion nnil n) nnil --> bool.false.
-[m] eq nnil (nunion nnil m) --> bool.false.
+[] eq (nunion nnil _) nnil --> bool.false.
+[] eq nnil (nunion nnil _) --> bool.false.
 [n, m] eq (nunion nnil n) (nunion nnil m) --> eq n m.
 
 def lq: Nat -> Nat -> bool.Bool.
 [] lq nnil nnil --> bool.false.
-[m] lq nnil (nunion nnil m) --> bool.true.
-[m] lq (nunion nnil m) nnil --> bool.false.
+[] lq nnil (nunion nnil _) --> bool.true.
+[] lq (nunion nnil _) nnil --> bool.false.
 [n, m] lq (nunion nnil n) (nunion nnil m) --> lq n m.
 
 
 def leq: Nat -> Nat -> bool.Bool.
-[n] leq nnil n --> bool.true.
-[m] leq (nunion nnil m) nnil --> bool.false.
+[] leq nnil _ --> bool.true.
+[] leq (nunion nnil _) nnil --> bool.false.
 [n, m] leq (nunion nnil n) (nunion nnil m) --> leq n m.
 
 

@@ -1,3 +1,4 @@
+#REQUIRE bool.
 Lvl: Type.
 
 def z: Lvl.

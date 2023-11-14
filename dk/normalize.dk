@@ -1,3 +1,7 @@
+#REQUIRE lvl.
+#REQUIRE sublvl.
+#REQUIRE nat.
+#REQUIRE instantiate.
 def var: lvl.Lvl -> lvl.Lvl.
 
 def maxS: sublvl.Set -> lvl.Lvl.
@@ -29,20 +33,20 @@ lvl.max
 def rulehelper: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
 [u] rulehelper u (maxS sublvl.nil) -->
   maxS sublvl.nil.
-[u, v, q] rulehelper u (maxS (sublvl.union (sublvl.singleton v) q)) -->
+[u, v, q] rulehelper u (maxS (sublvl.union q (sublvl.singleton v))) -->
   lvl.max (srule u v) (rulehelper u (maxS q)).
 
 [] lvl.z --> normalize.maxS sublvl.nil.
 
 [] lvl.s (normalize.maxS sublvl.nil) -->
 normalize.maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
-[u, q] lvl.s (normalize.maxS (sublvl.union (sublvl.singleton u) q)) -->
+[u, q] lvl.s (normalize.maxS (sublvl.union q (sublvl.singleton u))) -->
 normalize.maxS (sublvl.s (sublvl.cons u q)).
 
 [l, l'] lvl.max (normalize.maxS l) (normalize.maxS l') --> normalize.maxS (sublvl.union l l').
 
 [t] lvl.imax (normalize.maxS sublvl.nil) t --> t.
-[u, q, t] lvl.imax (normalize.maxS (sublvl.union (sublvl.singleton u) q)) t -->
+[u, q, t] lvl.imax (normalize.maxS (sublvl.union q (sublvl.singleton u))) t -->
   lvl.max (normalize.rulehelper u t) (lvl.imax (normalize.maxS q) t).
 
 (; --- instantiation --- ;)
@@ -90,41 +94,41 @@ def asFromMaxS: lvl.Set -> sublvl.Set -> nat.Nat -> sublvl.Set.
 (; handle fromSubLvl in guard variable ;)
 
 [s, s', l, l', n] sublvl.singleton (; A(s U {A(s', l', 0)}, l, n) = A(s U s' U {l'}, l, n) ;)
-  (sublvl.a (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' l' nat.nnil))) s) l n) -->
+  (sublvl.a (lvl.union s (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' l' nat.nnil)))) l n) -->
   sublvl.singleton (sublvl.a (lvl.cons l' (lvl.union s s')) l n).
 [s, s', l, n] sublvl.singleton (; A(s U {A(s', _, 1 + _)}, l, n) = A(s U s', l, n) ;)
-  (sublvl.a (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' _ (nat.nunion _ nat.nnil)))) s) l n) -->
+  (sublvl.a (lvl.union s (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' _ (nat.nunion _ nat.nnil))))) l n) -->
   sublvl.singleton (sublvl.a (lvl.union s s') l n).
 
 [s, s', l', n] sublvl.singleton (; B(s U {A(s', l', 0)}, n) = B(s U s' U {l'}, n) ;)
-  (sublvl.b (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' l' nat.nnil))) s) n) -->
+  (sublvl.b (lvl.union s (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' l' nat.nnil)))) n) -->
   sublvl.singleton (sublvl.b (lvl.cons l' (lvl.union s s')) n).
 [s, s', n] sublvl.singleton (; B(s U {A(s', _, 1 + _)}, n) = B(s U s', n) ;)
-  (sublvl.b (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' _ (nat.nunion _ nat.nnil)))) s) n) -->
+  (sublvl.b (lvl.union s (lvl.singleton (instantiate.fromSubLvl (sublvl.a s' _ (nat.nunion _ nat.nnil))))) n) -->
   sublvl.singleton (sublvl.b (lvl.union s s') n).
 
 [s, s', l, n] sublvl.singleton (; A(s U {B(s', 1 + _)}, l, n) = A(s U s', l, n) ;)
-  (sublvl.a (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.b s' (nat.nunion _ nat.nnil)))) s) l n) -->
+  (sublvl.a (lvl.union s (lvl.singleton (instantiate.fromSubLvl (sublvl.b s' (nat.nunion _ nat.nnil))))) l n) -->
   sublvl.singleton (sublvl.a (lvl.union s s') l n).
 [] sublvl.singleton (; A(_ U {B(_, 0)}, _, _) = maxS {} ;)
-  (sublvl.a (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.b _ nat.nnil))) _) _ _) -->
+  (sublvl.a (lvl.union _ (lvl.singleton (instantiate.fromSubLvl (sublvl.b _ nat.nnil)))) _ _) -->
   sublvl.nil.
 
 [s, s', n] sublvl.singleton (; B(s U {B(s', 1 + _)}, n) = B(s U s', n) ;)
-  (sublvl.b (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.b s' (nat.nunion _ nat.nnil)))) s) n) -->
+  (sublvl.b (lvl.union s (lvl.singleton (instantiate.fromSubLvl (sublvl.b s' (nat.nunion _ nat.nnil))))) n) -->
   sublvl.singleton (sublvl.b (lvl.union s s') n).
 [] sublvl.singleton (; B(_ U {B(_, 0)}, _, _) = maxS {} ;)
-  (sublvl.b (lvl.union (lvl.singleton (instantiate.fromSubLvl (sublvl.b _ nat.nnil))) _) _) -->
+  (sublvl.b (lvl.union _ (lvl.singleton (instantiate.fromSubLvl (sublvl.b _ nat.nnil)))) _) -->
   sublvl.nil.
 
 (; handle fromSubLvl in guarded variable ;)
 [s, s', l', n, n'] sublvl.singleton (; A(s, {A(s', l', n')}, n) = maxS{ A(s U s', l', n + n'), B(s, n)} ;)
   (sublvl.a s (instantiate.fromSubLvl (sublvl.a s' l' n')) n) -->
-  sublvl.union 
+  sublvl.union
     (sublvl.singleton (sublvl.a (lvl.union s s') l' (nat.plus n n')))
     (sublvl.singleton (sublvl.b s n)).
 [s, s', n, n'] sublvl.singleton (; A(s, {B(s', n')}, n) = maxS{ B(s U s', n + n'), B(s, n)} ;)
   (sublvl.a s (instantiate.fromSubLvl (sublvl.b s' n')) n) -->
-  sublvl.union 
+  sublvl.union
     (sublvl.singleton (sublvl.b (lvl.union s s') (nat.plus n n')))
     (sublvl.singleton (sublvl.b s n)).

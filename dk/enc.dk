@@ -1,4 +1,5 @@
 #REQUIRE normalize.
+#REQUIRE lvl.
 
 Univ : lvl.Lvl -> Type.
 
