@@ -32,22 +32,22 @@ def rulehelper: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
 [u, v, q] rulehelper u (maxS (sublvl.union (sublvl.singleton v) q)) -->
   lvl.max (srule u v) (rulehelper u (maxS q)).
 
-[] lvl.z --> normalize.maxS sublvl.nil.
+[] lvl.z --> maxS sublvl.nil.
 
-[] lvl.s (normalize.maxS sublvl.nil) -->
-normalize.maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
-[u, q] lvl.s (normalize.maxS (sublvl.union (sublvl.singleton u) q)) -->
-normalize.maxS (sublvl.s (sublvl.cons u q)).
+[] lvl.s (maxS sublvl.nil) -->
+maxS (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil).
+[u, q] lvl.s (maxS (sublvl.union (sublvl.singleton u) q)) -->
+maxS (sublvl.s (sublvl.cons u q)).
 
-[l, l'] lvl.max (normalize.maxS l) (normalize.maxS l') --> normalize.maxS (sublvl.union l l').
+[l, l'] lvl.max (maxS l) (maxS l') --> maxS (sublvl.union l l').
 
-[t] lvl.imax (normalize.maxS sublvl.nil) t --> t.
-[u, q, t] lvl.imax (normalize.maxS (sublvl.union (sublvl.singleton u) q)) t -->
-  lvl.max (normalize.rulehelper u t) (lvl.imax (normalize.maxS q) t).
+[t] lvl.imax (maxS sublvl.nil) t --> t.
+[u, q, t] lvl.imax (maxS (sublvl.union (sublvl.singleton u) q)) t -->
+  lvl.max (rulehelper u t) (lvl.imax (maxS q) t).
 
 (; --- instantiation --- ;)
 
-[s, sls] lvl.union s (lvl.singleton (normalize.maxS sls)) --> lvl.union s (instantiate.fromSubLvlSet sls).
+[s, sls] lvl.union s (lvl.singleton (maxS sls)) --> lvl.union s (instantiate.fromSubLvlSet sls).
 
 def asFromMulti: lvl.sSet -> lvl.Lvl -> nat.Nat -> sublvl.Set.
 [s, S, l, n] asFromMulti (lvl.scons s S) l n --> sublvl.cons (sublvl.a s l n) (asFromMulti S l n).

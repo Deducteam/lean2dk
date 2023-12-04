@@ -5,9 +5,13 @@ inductive True : Prop where
 
 def test : True → True := λ x : True => x
 
+def id {T : Sort u} : T → T := λ x : T => x
+
 inductive Nat : Type where
   | zero : Nat
   | succ : Nat → Nat
+
+def idtest : Nat := id Nat.zero
 
 noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
   Nat.rec a (fun _ sum => Nat.succ sum) b

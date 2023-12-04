@@ -54,4 +54,4 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 
 (; remove duplicates (e.g. duplicate level variables, nils) ;)
 [l, s] union l (union l s) --> union l s.
-[l] union l l --> l.
+[] union nil nil --> nil.

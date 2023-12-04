@@ -10,3 +10,4 @@ sess.vim
 stdout
 *.dko
 .depend
+/.lake

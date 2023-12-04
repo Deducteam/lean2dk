@@ -35,7 +35,7 @@ def iteset: bool.Bool -> Set -> Set -> Set.
 
 (; remove duplicates (e.g. nils) ;)
 [sl, sls] union sl (union sl sls) --> union sl sls.
-[sl] union sl sl --> sl.
+[] union nil nil --> nil.
 
 def s: Set -> Set.
 [] s nil --> nil.
