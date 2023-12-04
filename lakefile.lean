@@ -15,7 +15,7 @@ lean_lib Dedukti { roots := #[`Dedukti] }
 --   "git@github.com:lurk-lab/Cli.lean.git" @ "ef6f9bcd1738638fca8d319dbee653540d56614e"
 
 require std from git
-  "git@github.com:leanprover/std4.git" @ "ce2db21d86502e00c4761da5ade58a61612de656"
+  "https://github.com/leanprover/std4" @ "ce2db21d86502e00c4761da5ade58a61612de656"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "

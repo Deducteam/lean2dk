@@ -20,12 +20,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Reconfigure git to use HTTP authentication
-        run: >
-          git config --global url."https://github.com/".insteadOf
-          ssh://git@github.com/
       - name: Set-up OCaml ${{ matrix.ocaml-compiler }}
         uses: ocaml/setup-ocaml@v2
         with:
@@ -36,4 +30,4 @@ jobs:
       - uses: Julian/setup-lean@v1
 
       - name: Test translation
-        run: lake run trans
+        run: eval $(opam env) && lake run trans
