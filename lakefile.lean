@@ -64,3 +64,36 @@ script check do
   match ← runCmd "make check -C dk" with
   | .error e => IO.eprintln e; return 1
   | .ok _ => IO.println "check passed!"; return 0
+
+partial def getFilePaths (fp : FilePath) (ext : String) (acc : Array FilePath := #[]) :
+    IO $ Array FilePath := do
+  if ← fp.isDir then
+    (← fp.readDir).foldlM (fun acc dir => getFilePaths dir.path ext acc) acc
+  else return if fp.extension == some ext then acc.push fp else acc
+
+open Lean (RBTree)
+
+def getAllFiles : ScriptM $ List String := do
+  let leanPaths := (← getFilePaths ⟨"Dedukti"⟩ "lean").map toString
+  let dkPaths := (← getFilePaths ⟨"dk"⟩ "dk").map toString
+  let etcPaths := ["Test.lean"]
+  -- let paths : RBTree String compare := RBTree.ofList (leanPaths ++ dkPaths ++ paths).toList -- ordering
+  return leanPaths.toList ++ dkPaths.toList ++ etcPaths
+
+script watch (args) do
+  let op :=
+  if h : 0 < args.length then
+    args[0]'h
+  else
+    "check"
+  IO.println s!"watching for file changes to run {op}..."
+  while true do
+    match ← runCmd s!"inotifywait -qr -e modify -e create -e delete -e move --include dk --include lean --format %w Dedukti/ dk/" with
+    | .error e => IO.eprintln s!"error: {e}"
+    | .ok stdout => IO.print s!"file changed in path: {stdout}"
+
+    IO.println s!"> lake run {op}"
+    match ← runCmd s!"lake run {op}" with
+    | .error e => IO.eprintln e
+    | .ok stdout => IO.println stdout
+  return 0
