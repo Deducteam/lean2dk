@@ -40,9 +40,18 @@ def runCmd (cmd : String) : ScriptM $ Except String String := do
     then return .error (stdout ++ "\n" ++ stderr)
     else return .ok (stdout ++ "\n" ++ stderr)
 
-script trans do
+def argsString (args : List String) :=
+  s!"{args.foldl (init := "") fun acc arg => acc ++ " " ++ arg}"
+
+script trans_only (args) do
+  IO.println "running translation only..."
+  IO.println s!"'lake exe lean2dk{argsString args}'"
+  let {stdout, ..} ← runCmd' s!"lake exe lean2dk{argsString args}"
+  IO.eprintln stdout; return 1
+
+script trans (args) do
   IO.println "running translation + check..."
-  match ← runCmd "lake exe lean2dk" with
+  match ← runCmd s!"lake exe lean2dk{argsString args}" with
   | .error e => IO.eprintln e; return 1
   | .ok stdout =>
     IO.FS.writeFile "stdout" stdout
@@ -81,19 +90,19 @@ def getAllFiles : ScriptM $ List String := do
   return leanPaths.toList ++ dkPaths.toList ++ etcPaths
 
 script watch (args) do
-  let op :=
-  if h : 0 < args.length then
-    args[0]'h
-  else
-    "check"
+  let (op, args) :=
+    if h : 0 < args.length then
+      (args[0]'h, args.tail!)
+    else
+      ("check", [])
   IO.println s!"watching for file changes to run {op}..."
   while true do
-    match ← runCmd s!"inotifywait -qr -e modify -e create -e delete -e move --include dk --include lean --format %w Dedukti/ dk/" with
+    match ← runCmd s!"inotifywait -qr -e modify -e create -e delete -e move --include (\\.lean|\\.dk) --format %w Dedukti/ dk/ Test.lean Main.lean" with
     | .error e => IO.eprintln s!"error: {e}"
     | .ok stdout => IO.print s!"file changed in path: {stdout}"
-
-    IO.println s!"> lake run {op}"
-    match ← runCmd s!"lake run {op}" with
+    let cmd := s!"lake run {op}{argsString args}"
+    IO.println s!"> {cmd}"
+    match ← runCmd s!"{cmd}" with
     | .error e => IO.eprintln e
     | .ok stdout => IO.println stdout
   return 0

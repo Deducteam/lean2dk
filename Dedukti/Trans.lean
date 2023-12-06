@@ -99,7 +99,8 @@ mutual
 
 end
 
-def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const := withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
+def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
+withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
   let name := (← get).constName
   let type ← fromExprAsType cnst.type
   let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr

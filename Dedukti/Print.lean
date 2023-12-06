@@ -52,7 +52,7 @@ structure PrintCtx where
   deriving Inhabited
   
 structure PrintState where
-  printedConsts : Lean.HashSet Name := default
+  printedConsts : Std.RBMap Name String compare := default
   out           : List String := []
   deriving Inhabited
 
@@ -138,8 +138,8 @@ mutual
     if ((← get).printedConsts.contains const.name) then return
 
     -- dbg_trace s!"printing: {const.name}"
-    -- mark this constant as printed to avoid infinite loops
-    modify fun s => { s with printedConsts := s.printedConsts.insert const.name}
+    -- immediately mark this constant as printed to avoid infinite loops
+    modify fun s => { s with printedConsts := s.printedConsts.insert const.name ""}
 
     let constString ← match const with
       | .static (name : Name) (type : Expr) => do pure s!"{name} : {← type.print}."
@@ -150,7 +150,7 @@ mutual
         let rules := "\n".intercalate (← rules.mapM (·.print))
         pure s!"{decl}\n{rules}"
 
-    modify fun s => { s with out := s.out ++ [constString] }
+    modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString}
     -- dbg_trace s!"\tprinted: {const.name}"
 
 end
