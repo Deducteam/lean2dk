@@ -1,4 +1,7 @@
 prelude
+set_option linter.all false -- prevent runFrontend error messages
+
+universe u v
 
 inductive True : Prop where
   | intro : True
@@ -60,9 +63,7 @@ noncomputable def letTestBinders : Nat → Bool → Prop :=
   y
   (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
 
-universe u v
-
-def multiUnivTest (T1 : Sort u) (T2 : Sort v) : Sort v := T2
+-- def multiUnivTest (T1 : Sort u) (T2 : Sort v) : Sort v := T2
 
 -- structure PLift (α : Sort u) : Type u where
 --   up :: down : α

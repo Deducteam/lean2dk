@@ -45,16 +45,17 @@ def argsString (args : List String) :=
 
 script trans_only (args) do
   IO.println "running translation only..."
-  IO.println s!"'lake exe lean2dk{argsString args}'"
-  let {stdout, ..} ← runCmd' s!"lake exe lean2dk{argsString args}"
-  IO.eprintln stdout; return 1
+  let {stderr, stdout, ..} ← runCmd' s!"lake exe lean2dk{argsString args}"
+  IO.println stderr
+  IO.println stdout
+  return 1
 
 script trans (args) do
   IO.println "running translation + check..."
   match ← runCmd s!"lake exe lean2dk{argsString args}" with
   | .error e => IO.eprintln e; return 1
   | .ok stdout =>
-    IO.FS.writeFile "stdout" stdout
+    IO.println stdout
     -- printCmd "echo ---------------- out.dk"
     -- printCmd "cat dk/out.dk"
     -- printCmd "echo ----------------"

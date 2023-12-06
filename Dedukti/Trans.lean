@@ -141,11 +141,23 @@ withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
         pure $ .mk vars lhs rhs :: acc
     pure $ .definable name type rules
 
-def translateEnv (env : Lean.Environment) : TransM Unit := do
-  env.constants.forM (fun _ cinfo => do
-    if !cinfo.name.isInternal then
-      let const ← constFromConstantInfo env cinfo
-      modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
+def translateEnv (env : Lean.Environment) (consts? : Option $ List Name := none): TransM Unit := do
+  let transFromCinfo := fun cinfo => do
+    let const ← constFromConstantInfo env cinfo
+    let s ← get
+    let s := { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
+    set s -- FIXME why can't use modify here?
+
+  match consts? with
+  | some consts =>
+    for const in consts do
+      match env.constants.find? const with
+      | some cinfo => transFromCinfo cinfo
+      | none => throw $ .error default s!"could not find constant \"{const}\" for printing, verify that it exists in the translated environment"
+  | none =>
+    env.constants.forM (fun _ cinfo => do
+      if !cinfo.name.isInternal then
+        transFromCinfo cinfo
   )
 
 end Trans

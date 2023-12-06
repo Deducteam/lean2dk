@@ -48,6 +48,7 @@ def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid nami
 
 structure PrintCtx where
   env : Env
+  printDeps := true
   lvl : Nat := 0
   deriving Inhabited
   
@@ -60,6 +61,9 @@ abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
 
 def withResetPrintMLevel : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with lvl := 0 }
+
+def withPrintDeps (printDeps : Bool) : PrintM α → PrintM α :=
+  withReader fun ctx => { ctx with printDeps }
 
 def withNewPrintMLevel : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with
@@ -113,7 +117,7 @@ mutual
     match expr with
     | .var idx => pure s!"x{(← read).lvl - (idx + 1)}"
     | .const name =>
-      if !(preludeConstNames.contains name) && ! ((← get).printedConsts.contains name) then
+      if (← read).printDeps && !(preludeConstNames.contains name) && !((← get).printedConsts.contains name) then
         -- print this constant first to make sure the DAG of constant dependencies
         -- is correctly linearized upon printing the .dk file
         let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
@@ -155,9 +159,10 @@ mutual
 
 end
     
-def Env.print (env : Env) : PrintM PUnit := do
-  env.constMap.forM (fun _ const =>
+-- if `name` is specified, only print that constant (without printing dependencies)
+def Env.print (env : Env) (deps : Bool := true) : PrintM PUnit := do
+  withPrintDeps deps $ env.constMap.forM (fun _ const =>
     --dbg_trace s!"printing: {const.name}"
-     const.print)
+    const.print)
 
 end Dedukti

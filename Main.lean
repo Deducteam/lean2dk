@@ -18,8 +18,11 @@ def main (args : List String) : IO UInt32 := do
       IO.println s!"definition: {repr const}"
     )
 
+  let debugRun := args.length > 0
+
+  let consts := if debugRun then .some $ args.map (·.toName) else none
   -- translate elaborated Lean environment to Dedukti
-  let (_, {env := dkEnv, ..}) ← ((Trans.translateEnv leanEnv).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv}
+  let (_, {env := dkEnv, ..}) ← ((Trans.translateEnv leanEnv consts).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv}
   -- Prod.fst <$> x.toIO { options := ppCtx.opts, currNamespace := ppCtx.currNamespace, openDecls := ppCtx.openDecls, fileName := "<PrettyPrinter>", fileMap := default }
   --                     { env := ppCtx.env, ngen := { namePrefix := `_pp_uniq } }
 )
@@ -30,19 +33,21 @@ def main (args : List String) : IO UInt32 := do
     )
 
   -- print Dedukti environment
-  match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print) {env := dkEnv}) default)) with
+  match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print (deps := not debugRun)) {env := dkEnv}) default)) with
     | .error s => throw $ IO.userError s
     | .ok (_, s) =>
-      if args.length == 0 then
-        let dkEnvString := "\n\n".intercalate s.out
+  -- match names? with
+  -- | some names =>
+  --   for name in names do
+  --     match env.constMap.find? name with
+  --     | some const => withPrintDeps deps const.print
+  --     | none => throw s!"could not find constant \"{name}\" for printing, verify that it exists in the translated environment"
+      let dkEnvString := "\n\n".intercalate s.out
+      if debugRun then
+        IO.println dkEnvString
+      else
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
         IO.FS.writeFile "dk/out.dk" dkEnvString
-      else
-        for arg in args do
-          match (s.printedConsts).find? arg with
-          | some s => IO.println s
-          | none => IO.println s!"could not find constant \"{arg}\" for printing, check that it really exists in the translated environment"
-
 
   return 0
