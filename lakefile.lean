@@ -98,12 +98,12 @@ script watch (args) do
       ("check", [])
   IO.println s!"watching for file changes to run {op}..."
   while true do
-    match ← runCmd s!"inotifywait -qr -e modify -e create -e delete -e move --include (\\.lean|\\.dk) --format %w Dedukti/ dk/ Test.lean Main.lean" with
-    | .error e => IO.eprintln s!"error: {e}"
-    | .ok stdout => IO.print s!"file changed in path: {stdout}"
     let cmd := s!"lake run {op}{argsString args}"
     IO.println s!"> {cmd}"
     match ← runCmd s!"{cmd}" with
     | .error e => IO.eprintln e
     | .ok stdout => IO.println stdout
+    match ← runCmd s!"inotifywait -qr -e modify -e create -e delete -e move --include (\\.lean|\\.dk) --format %w Dedukti/ dk/ Test.lean Main.lean" with
+    | .error _ => pure ()
+    | .ok stdout => IO.print s!"file changed in path: {stdout}"
   return 0

@@ -40,6 +40,7 @@ def withResetCtx : TransM α → TransM α :=
 def withNoLVarNormalize : TransM α → TransM α :=
   withReader fun ctx => { ctx with noLVarNormalize := true }
 
+-- TODO is there an API function to keep track of levels inside of MetaM?
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
   let lvlParams ← params.length.foldM (init := default) fun i curr =>  
     pure $ curr.insert params[i]! i

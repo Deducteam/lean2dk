@@ -19,8 +19,17 @@ def idtest : Nat := id Nat.zero
 noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
   Nat.rec a (fun _ sum => Nat.succ sum) b
 
-inductive Eq {α : Type} : α → α → Prop where
+-- large-eliminating with universe arg
+inductive Eq {α : Type u} : α → α → Prop where
   | refl {a : α} : Eq a a
+
+-- TODO large-eliminating with multiple universe args
+
+-- small-eliminating with universe arg
+inductive Exists {α : Sort u} (p : α → Prop) : Prop where
+  | intro (w : α) (h : p w) : Exists p
+
+#print Exists.rec
 
 theorem addZero (n : Nat) : Eq (Nat.add n Nat.zero) n := Eq.refl
 theorem zeroAdd (n : Nat) : Eq (Nat.add Nat.zero n) n := 

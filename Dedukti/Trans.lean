@@ -123,6 +123,10 @@ withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
         let vars := cnst.levelParams.length + domVars.size
         let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
         let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
+        let largeElim : Bool ← forallTelescope (← inferType motiveArg) fun _ out =>
+          match out with
+          | .sort .zero => pure false
+          | _ => pure true
 
         let outType ← inferType bod
         let outFn := outType.getAppFn
@@ -131,8 +135,9 @@ withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
         let outArgs := outType.getAppArgs
         let idxArgs := outArgs[:outArgs.size - 1]
 
+        let ctorLvlOffset := if largeElim then 1 else 0 -- if large-eliminating, first param is output sort
         let numCtorLvls := ctor.levelParams.length
-        let ctorLvls := (lvls[:numCtorLvls]).toArray.toList -- FIXME D:
+        let ctorLvls := lvls[ctorLvlOffset:numCtorLvls+ctorLvlOffset].toArray.toList -- FIXME D:
         let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
         let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorApp]
 
