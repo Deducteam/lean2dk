@@ -11,11 +11,11 @@ lean_exe lean2dk where
 
 lean_lib Dedukti { roots := #[`Dedukti] }
 
--- require Cli from git
---   "git@github.com:lurk-lab/Cli.lean.git" @ "ef6f9bcd1738638fca8d319dbee653540d56614e"
-
 require std from git
   "https://github.com/leanprover/std4" @ "ce2db21d86502e00c4761da5ade58a61612de656"
+
+require Cli from git
+  "https://github.com/leanprover/lean4-cli" @ "main"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "
@@ -59,21 +59,21 @@ script trans (args) do
     -- printCmd "echo ---------------- out.dk"
     -- printCmd "cat dk/out.dk"
     -- printCmd "echo ----------------"
-    match ← runCmd "make check -C dk" with
+    match ← runCmd "make check -sC dk" with
     | .error e => IO.eprintln e; return 1
-    | .ok _ => IO.println "tests passed!"; return 0
+    | .ok _ => IO.println "\ntests passed!"; return 0
 
 script test do
   IO.println "running tests..."
-  match ← runCmd "make test -C dk" with
+  match ← runCmd "make test -sC dk" with
   | .error e => IO.eprintln e; return 1
   | .ok out => IO.println out; IO.println "tests passed!"; return 0
 
 script check do
   IO.println "running check..."
-  match ← runCmd "make check -C dk" with
+  match ← runCmd "make check -sC dk" with
   | .error e => IO.eprintln e; return 1
-  | .ok _ => IO.println "check passed!"; return 0
+  | .ok o => IO.println (o ++ "\ntests passed!"); return 0
 
 partial def getFilePaths (fp : FilePath) (ext : String) (acc : Array FilePath := #[]) :
     IO $ Array FilePath := do

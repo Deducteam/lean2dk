@@ -9,14 +9,6 @@ instance : Ord Name where
 namespace Dedukti
 
 mutual
-  inductive Rule where
-    | mk (vars : Nat) (lhs : Expr) (rhs : Expr)
-
-  inductive Const where
-    | static (name : Name) (type : Expr) 
-    | definable (name : Name) (type : Expr) (rules : List Rule)
-    deriving Repr
-
   inductive Expr
     | var (idx : Nat) 
     | const (name : Name)
@@ -26,6 +18,15 @@ mutual
     | pi (dom : Expr) (img : Expr)
     | type
     | kind
+    deriving Repr, Inhabited
+
+  inductive Rule where
+    | mk (vars : Nat) (lhs : Expr) (rhs : Expr)
+    deriving Repr, Inhabited
+
+  inductive Const where
+    | static (name : Name) (type : Expr) 
+    | definable (name : Name) (type : Expr) (rules : List Rule)
     deriving Repr, Inhabited
 end
 
