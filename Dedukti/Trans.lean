@@ -39,7 +39,12 @@ mutual
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => throw $ .error default "unexpected bound variable encountered"
     | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
-    | .const name lvls => do pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
+    | .const name lvls => do
+      if (← read).transDeps then
+        match (← get).env.constMap.find? name with -- only translate if not already
+        | some _ => pure ()
+        | none => transNamedConst name
+      pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
     | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
                                 domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
@@ -97,72 +102,77 @@ mutual
       pure (fvarTypes.insert fvar.fvarId!.name type, fvars.push fvar)
     withFVars fvarTypes fvars m
 
-end
+  partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
+  withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
+    let name := (← get).constName
+    let type ← fromExprAsType cnst.type
+    let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
+    match cnst with
+    | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
+    | .defnInfo     (val : Lean.DefinitionVal)
+    | .thmInfo      (val : Lean.TheoremVal) => do
+      let value ← fromExpr val.value
+      let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
+      pure $ .definable name type [.mk 0 (.const name) value]
+    | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
+    | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
+    | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
+    | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name type
+    | .recInfo      (val : Lean.RecursorVal) => do
+      let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
+      let rules ← val.rules.foldlM (init := []) fun acc r => do
+        -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
+        lambdaTelescope r.rhs fun domVars bod => do
+          let vars := cnst.levelParams.length + domVars.size
+          let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
+          let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
+          let largeElim : Bool ← forallTelescope (← inferType motiveArg) fun _ out =>
+            match out with
+            | .sort .zero => pure false
+            | _ => pure true
 
-def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
-withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
-  let name := (← get).constName
-  let type ← fromExprAsType cnst.type
-  let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
-  match cnst with
-  | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
-  | .defnInfo     (val : Lean.DefinitionVal)
-  | .thmInfo      (val : Lean.TheoremVal) => do
-    let value ← fromExpr val.value
-    let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
-    pure $ .definable name type [.mk 0 (.const name) value]
-  | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
-  | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
-  | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
-  | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name type
-  | .recInfo      (val : Lean.RecursorVal) => do
-    let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
-    let rules ← val.rules.foldlM (init := []) fun acc r => do
-      -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
-      lambdaTelescope r.rhs fun domVars bod => do
-        let vars := cnst.levelParams.length + domVars.size
-        let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
-        let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
-        let largeElim : Bool ← forallTelescope (← inferType motiveArg) fun _ out =>
-          match out with
-          | .sort .zero => pure false
-          | _ => pure true
+          let outType ← inferType bod
+          let outFn := outType.getAppFn
+          -- sanity check
+          if outFn != motiveArg then throw $ .error default s!"output type is not motive application" 
+          let outArgs := outType.getAppArgs
+          let idxArgs := outArgs[:outArgs.size - 1]
 
-        let outType ← inferType bod
-        let outFn := outType.getAppFn
-        -- sanity check
-        if outFn != motiveArg then throw $ .error default s!"output type is not motive application" 
-        let outArgs := outType.getAppArgs
-        let idxArgs := outArgs[:outArgs.size - 1]
+          let ctorLvlOffset := if largeElim then 1 else 0 -- if large-eliminating, first param is output sort
+          let numCtorLvls := ctor.levelParams.length
+          let ctorLvls := lvls[ctorLvlOffset:numCtorLvls+ctorLvlOffset].toArray.toList -- FIXME D:
+          let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
+          let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorApp]
 
-        let ctorLvlOffset := if largeElim then 1 else 0 -- if large-eliminating, first param is output sort
-        let numCtorLvls := ctor.levelParams.length
-        let ctorLvls := lvls[ctorLvlOffset:numCtorLvls+ctorLvlOffset].toArray.toList -- FIXME D:
-        let ctorApp := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
-        let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorApp]
+          let (lhs, rhs) ← withTypedFVars domVars $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
 
-        let (lhs, rhs) ← withTypedFVars domVars $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
+          pure $ .mk vars lhs rhs :: acc
+      pure $ .definable name type rules
 
-        pure $ .mk vars lhs rhs :: acc
-    pure $ .definable name type rules
-
-def translateEnv (env : Lean.Environment) (consts? : Option $ List Name := none): TransM Unit := do
-  let transFromCinfo := fun cinfo => do
-    let const ← constFromConstantInfo env cinfo
+  partial def transConst (cinfo : Lean.ConstantInfo) : TransM Unit := do
+    -- pre-mark as translated in order to prevent infinite looping with transDeps == true
+    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert cinfo.name default} }
+    let const ← constFromConstantInfo (← read).env cinfo
     let s ← get
-    let s := { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
+    let s := { s with env := {s.env with constMap := s.env.constMap.insert cinfo.name const} }
     set s -- FIXME why can't use modify here?
 
+  partial def transNamedConst (const : Name) : TransM Unit := do
+      match (← read).env.constants.find? const with
+      | some cinfo => transConst cinfo
+      | none => throw $ .error default s!"could not find constant \"{const}\" for printing, verify that it exists in the Lean input"
+
+end
+
+def translateEnv (consts? : Option $ Array Name := none) (transDeps : Bool := false) : TransM Unit := do
   match consts? with
   | some consts =>
     for const in consts do
-      match env.constants.find? const with
-      | some cinfo => transFromCinfo cinfo
-      | none => throw $ .error default s!"could not find constant \"{const}\" for printing, verify that it exists in the translated environment"
+      withTransDeps transDeps $ transNamedConst const
   | none =>
-    env.constants.forM (fun _ cinfo => do
+    (← read).env.constants.forM (fun _ cinfo => do
       if !cinfo.name.isInternal then
-        transFromCinfo cinfo
+        transConst cinfo
   )
 
 end Trans

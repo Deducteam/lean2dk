@@ -1,11 +1,29 @@
 import Dedukti.Trans
 import Dedukti.Print
+import Cli
 
 open Dedukti
 
-def main (args : List String) : IO UInt32 := do
+open Cli
+
+def printDkEnv (dkEnv : Env) (printDeps : Bool) : IO Unit := do
+  -- print Dedukti environment
+  match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print (deps := printDeps)) {env := dkEnv}) default)) with
+    | .error s => throw $ IO.userError s
+    | .ok (_, s) =>
+      let dkEnvString := "\n\n".intercalate s.out
+      if not printDeps then
+        IO.println dkEnvString
+      else
+        let dkPrelude := "#REQUIRE normalize.\n"
+        let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
+        IO.FS.writeFile "dk/out.dk" dkEnvString
+
+def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨"Test.lean"⟩
   let fileName := path.toString
+  let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
+    setPathsFlag.as! (Array String)
 
   -- run elaborator on Lean file
   let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
@@ -18,36 +36,47 @@ def main (args : List String) : IO UInt32 := do
       IO.println s!"definition: {repr const}"
     )
 
-  let debugRun := args.length > 0
-
-  let consts := if debugRun then .some $ args.map (·.toName) else none
+  let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)
   -- translate elaborated Lean environment to Dedukti
-  let (_, {env := dkEnv, ..}) ← ((Trans.translateEnv leanEnv consts).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv}
-  -- Prod.fst <$> x.toIO { options := ppCtx.opts, currNamespace := ppCtx.currNamespace, openDecls := ppCtx.openDecls, fileName := "<PrettyPrinter>", fileMap := default }
-  --                     { env := ppCtx.env, ngen := { namePrefix := `_pp_uniq } }
+  let (_, {env := dkEnv, ..}) ← ((Trans.translateEnv onlyConstsToTrans? (transDeps := p.hasFlag "write")).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv} {env := leanEnv}
 )
 
-  if false then
-    dkEnv.constMap.forM (fun _ const => do
-      IO.println s!"definition: {repr const}"
-    )
+  let mut write := true
+  if let some _ := onlyConsts? then write := p.hasFlag "write"
 
-  -- print Dedukti environment
-  match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print (deps := not debugRun)) {env := dkEnv}) default)) with
-    | .error s => throw $ IO.userError s
-    | .ok (_, s) =>
-  -- match names? with
-  -- | some names =>
-  --   for name in names do
-  --     match env.constMap.find? name with
-  --     | some const => withPrintDeps deps const.print
-  --     | none => throw s!"could not find constant \"{name}\" for printing, verify that it exists in the translated environment"
-      let dkEnvString := "\n\n".intercalate s.out
-      if debugRun then
-        IO.println dkEnvString
-      else
-        let dkPrelude := "#REQUIRE normalize.\n"
-        let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
-        IO.FS.writeFile "dk/out.dk" dkEnvString
+  -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
+
+  if  write then
+    printDkEnv dkEnv true
+
+  if p.hasFlag "print" then
+    printDkEnv dkEnv false
 
   return 0
+
+def transCmd : Cmd := `[Cli|
+  transCmd VIA runTransCmd; ["0.0.1"]
+  "Translate from Lean to Dedukti."
+
+  FLAGS:
+    p, print;               "Print translation of specified constants to standard output (relevant only with '-o ...')."
+    w, write;               "Also write translation of specified constants (with dependencies) to file (relevant only with '-p')."
+    o, only : Array String; "Only translate the specified constants and their dependendcies."
+
+  ARGS:
+    input : String;      "Input filename."
+
+  -- SUBCOMMANDS:
+  --   installCmd;
+  --   testCmd
+
+  -- The EXTENSIONS section denotes features that
+  -- were added as an external extension to the library.
+  -- `./Cli/Extensions.lean` provides some commonly useful examples.
+  EXTENSIONS:
+    author "rish987";
+    defaultValues! #[("input", "Test.lean")]
+]
+
+def main (args : List String) : IO UInt32 := do
+  transCmd.validate args

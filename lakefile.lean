@@ -17,6 +17,9 @@ lean_lib Dedukti { roots := #[`Dedukti] }
 require std from git
   "https://github.com/leanprover/std4" @ "ce2db21d86502e00c4761da5ade58a61612de656"
 
+require Cli from git
+  "https://github.com/leanprover/lean4-cli" @ "main"
+
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "
   if h : cmd ≠ [] then

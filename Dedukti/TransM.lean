@@ -6,12 +6,15 @@ open Dedukti
 namespace Trans
 
 structure Context where
-  noLVarNormalize : Bool := false -- don't perform universe level normalization on variables; used in e.g. recursor rewrite rules
+  /-- Don't perform universe level normalization on variables; used in e.g. recursor rewrite rules. -/
+  noLVarNormalize : Bool := false
+  /-- Also translate any constant dependencies when they are encountered. -/
+  transDeps : Bool := false
+  env : Lean.Environment
   fvars     : Array Lean.Expr := default
   fvarTypes : Std.RBMap Name Expr compare := default
   lvars     : Std.RBMap Name (Nat × Name) compare := default
   lvlParams : Std.RBMap Name Nat compare := default
-  deriving Inhabited
 
 structure State where
   constName  : Name := default
@@ -23,10 +26,10 @@ structure State where
 
 abbrev TransM := ReaderT Context $ StateT State MetaM
 
-@[inline] def TransM.run (x : TransM α) (ctx : Context := {}) (s : State := {}) : MetaM (α × State) :=
+@[inline] def TransM.run (x : TransM α) (ctx : Context) (s : State := {}) : MetaM (α × State) :=
   x ctx |>.run s
 
-@[inline] def TransM.toIO (x : TransM α) (ctxCore : Lean.Core.Context) (sCore : Lean.Core.State) (ctx : Context := {}) (s : State := {}) : IO (α × State) := do
+@[inline] def TransM.toIO (x : TransM α) (ctxCore : Lean.Core.Context) (sCore : Lean.Core.State) (ctx : Context) (s : State := {}) : IO (α × State) := do
   let ((a, s), _, _) ← (x.run ctx s).toIO ctxCore sCore
   pure (a, s)
 
@@ -39,6 +42,9 @@ def withResetCtx : TransM α → TransM α :=
 
 def withNoLVarNormalize : TransM α → TransM α :=
   withReader fun ctx => { ctx with noLVarNormalize := true }
+
+def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
+  withReader fun ctx => { ctx with transDeps := transDeps }
 
 -- TODO is there an API function to keep track of levels inside of MetaM?
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
