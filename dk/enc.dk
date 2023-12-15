@@ -7,6 +7,6 @@ Sort : s:lvl.Lvl -> Univ (lvl.s s).
 def El : s:lvl.Lvl -> Univ s -> Type.
 
 Pi : s1:lvl.Lvl -> s2:lvl.Lvl -> s3:lvl.Lvl -> t:Univ s1 -> (El s1 t -> Univ s2) -> Univ s3.
-[s1, s2, s3, t, f] El s3 (Pi s1 s2 s3 t f) --> x:(El s1 t) -> (El s2 (f x)).
+[s1, s2, s3, t, f] El s3 (Pi s1 s2 _ t f) --> x:(El s1 t) -> (El s2 (f x)).
 
 [l] El _ (Sort l) --> Univ l.

@@ -128,3 +128,12 @@ def asFromMaxS: lvl.Set -> sublvl.Set -> nat.Nat -> sublvl.Set.
   sublvl.union 
     (sublvl.singleton (sublvl.b (lvl.union s s') (nat.plus n n')))
     (sublvl.singleton (sublvl.b s n)).
+
+(; needed to rewrite (normalize.var (normalize.maxS u)) --> (normalize.maxS u) in e.g. recursor rules ;)
+[sls] normalize.maxS
+  (sublvl.union
+     sublvl.nil
+     (normalize.asFromMaxS
+        (lvl.multi (lvl.sunion lvl.nil (instantiate.sSetFromSubLvlSet sls)))
+        sls
+        nat.nnil)) --> normalize.maxS sls.

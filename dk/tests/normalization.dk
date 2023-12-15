@@ -113,3 +113,18 @@ def test5' := x:lvl.Lvl => y:lvl.Lvl =>
 #CHECK test5 == test5'.
 
 (; #EVAL u:lvl.Lvl => v:lvl.Lvl => w:lvl.Lvl => lvl.s (lvl.imax (lvl.imax (normalize.var u) (normalize.var v)) (lvl.imax (lvl.imax (normalize.var u) (normalize.var v)) (normalize.var w))). ;)
+
+(;
+Unit : u:lvl.Lvl -> (enc.Univ (normalize.var u)).
+Unit_ctor : u:lvl.Lvl -> enc.El (normalize.var u) (Unit (normalize.var u)).
+def Unit_rec :
+    u      : lvl.Lvl ->
+    motive : (enc.El (normalize.var u) (Unit (normalize.var u)) -> enc.Univ lvl.z) ->
+    out    : (enc.El lvl.z (motive (Unit_ctor (normalize.var u)))) ->
+    x      : (enc.El (normalize.var u) (Unit (normalize.var u))) ->
+    enc.El lvl.z (motive x).
+
+#EVAL x: sublvl.Set => normalize.var (normalize.maxS x).
+
+[u, motive, out] Unit_rec (normalize.maxS u) motive out (Unit_ctor (normalize.maxS u)) --> out.
+;)
