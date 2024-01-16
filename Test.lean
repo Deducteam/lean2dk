@@ -14,6 +14,37 @@ inductive Nat : Type where
   | zero : Nat
   | succ : Nat → Nat
 
+inductive Unit : Prop where
+  | mk : Unit
+
+inductive UnitDep : Nat → Prop where
+  | mk : UnitDep Nat.zero
+
+-- generates non-left-linear recursor rule:
+-- U.rec.{l} {u : Unit} {motive : U u → Sort l} (mk : motive U.mk) (t : U u) : motive t
+-- [l, u, motive, mk] U_rec (normalize.maxS l) u motive mk (U_mk u) --> mk.
+inductive U : Unit → Prop where
+  | mk : U u
+
+-- generates non-left-linear recursor rule:
+-- U.rec.{l} {u : Unit} {motive : U u → Sort l} (mk : motive U.mk) (t : U u) : motive t
+-- [l, u, motive, mk] U_rec (normalize.maxS l) u motive mk (U_mk u) --> mk.
+inductive UDep : (n : Nat) → UnitDep n → Prop where
+  | mk : UDep n u
+
+-- TODO test inductive type family (as opposed to indexed inductive type)
+-- inductive U (u : Unit) : Type where
+--   | mk : U
+
+inductive Vec : Unit → Type where
+  | nil : Vec Unit.mk
+  | cons : Vec u → Nat → Vec u
+
+-- #print UDep.rec
+-- #print U.rec
+-- #print Vec.rec
+-- #print Nat.rec
+
 def idtest : Nat := id Nat.zero
 
 noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
