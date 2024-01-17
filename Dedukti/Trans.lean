@@ -41,9 +41,7 @@ mutual
     | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
     | .const name lvls => do
       if (← read).transDeps then
-        match (← get).env.constMap.find? (fixLeanName name) with -- only translate if not already translated
-        | some _ => pure ()
-        | none => transNamedConst name
+        transNamedConst name
       pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
     | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
@@ -111,9 +109,23 @@ mutual
     | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
     | .defnInfo     (val : Lean.DefinitionVal)
     | .thmInfo      (val : Lean.TheoremVal) => do
-      let value ← fromExpr val.value
-      let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
-      pure $ .definable name type [.mk 0 (.const name) value]
+      if ← Lean.isProjectionFn val.name then
+        -- dbg_trace s!"projection function detected: {val.name}"
+        let some projInfo ← Lean.getProjectionFnInfo? val.name | throw $ .error default s!"impossible case"
+        let numFields ← match env.find? projInfo.ctorName with
+          | some (.ctorInfo { numFields := n, .. }) => pure n
+          | _ => throw $ .error default s!"impossible case"
+        let numParams := cnst.levelParams.length + projInfo.numParams
+        let projAppPartial := numParams.foldRev (init := .const name) fun i app => .app app $ .var (i + numFields + numParams)
+        let ctorApp := (numParams + numFields).foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ .var i
+        if (← read).transDeps then
+          transNamedConst projInfo.ctorName
+        -- TODO params/universes?
+        pure $ .definable name type [.mk (numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
+      else
+        let value ← fromExpr val.value
+        let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
+        pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
     | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
@@ -144,6 +156,7 @@ mutual
           let newParams ← domVars[:val.numParams].foldlM (init := #[]) fun x param => do
             let paramType ← inferType param
             pure $ x.append #[(param.fvarId!.name ++ `New, default, fun prevParams => pure $ paramType.replaceFVars domVars[:prevParams.size] prevParams)]
+
           withLocalDecls newParams λ newParamVars => do -- use fresh parameter variables to avoid non-left-linearity
             let ctorAppLean := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ newParamVars ++ domVars[domVars.size - r.nfields:]
             let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorAppLean]
@@ -164,9 +177,12 @@ mutual
     set s -- FIXME why can't use modify here?
 
   partial def transNamedConst (const : Name) : TransM Unit := do
-      match (← read).env.constants.find? const with
-      | some cinfo => transConst cinfo
-      | none => throw $ .error default s!"could not find constant \"{const}\" for printing, verify that it exists in the Lean input"
+      match (← get).env.constMap.find? (fixLeanName const) with -- only translate if not already translated
+      | some _ => pure ()
+      | none =>
+        match (← read).env.constants.find? const with
+        | some cinfo => transConst cinfo
+        | none => throw $ .error default s!"could not find constant \"{const}\" for translation, verify that it exists in the Lean input"
 
 end
 

@@ -103,6 +103,9 @@ noncomputable def letTestBinders : Nat → Bool → Prop :=
   y
   (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
 
+structure Point (U : Type u) : Type u where
+mk :: (x : U) (y : U) (z : U)
+
 -- def multiUnivTest (T1 : Sort u) (T2 : Sort v) : Sort v := T2
 
 -- structure PLift (α : Sort u) : Type u where
