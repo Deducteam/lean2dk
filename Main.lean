@@ -31,7 +31,9 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     throw $ IO.userError $ "elab failed"
 
   let mut write := true
-  if let some _ := onlyConsts? then write := (not $ p.hasFlag "print") || p.hasFlag "write"
+  if let some onlyConsts := onlyConsts? then
+    IO.println s!"Only translating constants: {onlyConsts}"
+    write := (not $ p.hasFlag "print") || p.hasFlag "write"
 
   let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)
   -- translate elaborated Lean environment to Dedukti
