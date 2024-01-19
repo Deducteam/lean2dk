@@ -73,8 +73,9 @@ local function task_split (task)
   overseer.run_action(task, "open vsplit")
   curr_task_win = vim.api.nvim_get_current_win()
   vim.cmd("wincmd L")
-  vim.cmd("wincmd 50|")
+  vim.cmd("wincmd 90|")
   vim.cmd("set winfixwidth")
+  vim.cmd("set wrap")
 
   vim.api.nvim_set_current_win(main_win)
   curr_task = task

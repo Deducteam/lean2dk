@@ -146,16 +146,19 @@ mutual
     -- immediately mark this constant as printed to avoid infinite loops
     modify fun s => { s with printedConsts := s.printedConsts.insert const.name ""}
 
-    let constString ← match const with
-      | .static (name : Name) (type : Expr) => do pure s!"{name} : {← type.print}."
+    match const with
+      | .static (name : Name) (type : Expr) => do
+        let constString := s!"{name} : {← type.print}."
+        modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString}
       | .definable (name : Name) (type : Expr) (rules : List Rule) => do
         -- if name == `test then
-        --   dbg_trace s!"printing expression {name}: {repr type}"
-        let decl := s!"def {name} : {← type.print}."
+        dbg_trace s!"printing expression {name}"
+        let declString := s!"def {name} : {← type.print}."
+        modify fun s => { s with out := s.out ++ [declString], printedConsts := s.printedConsts.insert const.name declString}
         let rules := "\n".intercalate (← rules.mapM (·.print))
+        modify fun s => { s with out := s.out ++ [declString], printedConsts := s.printedConsts.insert const.name declString}
+        dbg_trace s!"done printing expression {name}"
         pure s!"{decl}\n{rules}"
-
-    modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString}
     -- dbg_trace s!"\tprinted: {const.name}"
 
 end
