@@ -120,7 +120,7 @@ mutual
         let ctorApp := (numParams + numFields).foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ .var i
         if (← read).transDeps then
           transNamedConst projInfo.ctorName
-        -- TODO params/universes?
+
         pure $ .definable name type [.mk (numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
       else
         let value ← fromExpr val.value
@@ -129,13 +129,46 @@ mutual
     | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
     | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
-    | .ctorInfo     (val : Lean.ConstructorVal) => do pure $ .static name type
+    | .ctorInfo     (val : Lean.ConstructorVal) => do
+      if Lean.isStructure env val.induct then
+        -- dbg_trace s!"found struct: {val.induct} with ctor: {name}"
+        let ctor := Lean.getStructureCtor env val.induct
+        let some info := Lean.getStructureInfo? env val.induct | throw $ .error default "impossible case"
+
+        let projFns ← info.fieldNames.mapM fun i =>
+          match Lean.getProjFnForField? env val.induct i with
+          | .some projFn => do
+            if (← read).transDeps then
+              transNamedConst projFn
+
+            pure $ .const $ fixLeanName projFn
+          | .none => throw $ .error default "impossible case"
+
+        let numLevels := val.levelParams.length
+        let numParams := val.numParams
+        let numVars := numLevels + numParams + numLevels + numParams + 1 -- TODO don't have to worry about indices, right?
+
+        -- TODO universes?
+        let ctorWithUnivs := numLevels.foldRev (init := .const name) fun i acc => .app acc (.var (i + numParams + numLevels + numParams + 1))
+        let ctorApp := val.numParams.foldRev (init := ctorWithUnivs) fun i acc => .app acc (.var (i + numLevels + numParams + 1))
+
+        let lhs := projFns.foldl (init := ctorApp)
+          fun acc fn =>
+            let prjApp := (numLevels + numParams).foldRev (init := fn) fun i acc => .app acc (.var (i + 1))
+            .app acc (.app prjApp (.var 0))
+
+        let rhs := .var 0
+
+        -- dbg_trace s!"found struct: {ctor.name}"
+        pure $ .definable name type [.mk numVars lhs rhs] -- TODO make injective
+      else
+        pure $ .static name type
     | .recInfo      (val : Lean.RecursorVal) => do
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
       let rules ← val.rules.foldlM (init := []) fun acc r => do
         -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
-          let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
+          let some motiveArg := domVars.get? val.numParams | throw $ .error default "impossible case"
           let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
           let largeElim : Bool ← forallTelescope (← inferType motiveArg) fun _ out =>
             match out with

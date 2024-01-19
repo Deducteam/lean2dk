@@ -6,14 +6,18 @@ open Dedukti
 
 open Cli
 
-def printDkEnv (dkEnv : Env) (printDeps : Bool) : IO Unit := do
+def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
+  let printDeps := if let some _ := only? then false else true
+
   -- print Dedukti environment
   match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print (deps := printDeps)) {env := dkEnv}) default)) with
     | .error s => throw $ IO.userError s
     | .ok (_, s) =>
       let dkEnvString := "\n\n".intercalate s.out
-      if not printDeps then
-        IO.println dkEnvString
+      if let some only := only? then
+        for name in only do
+          let constString := s.printedConsts.find! (fixLeanName name.toName)
+          IO.println constString
       else
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
@@ -43,10 +47,10 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
   if write then
-    printDkEnv dkEnv true
+    printDkEnv dkEnv none
 
   if p.hasFlag "print" then
-    printDkEnv dkEnv false
+    printDkEnv dkEnv onlyConsts?
 
   return 0
 
