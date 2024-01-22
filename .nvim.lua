@@ -14,12 +14,25 @@ vim.list_extend(source_files, vim.split(vim.fn.glob("dk/*.dk"), "\n"))
 vim.list_extend(source_files, vim.split(vim.fn.glob("*.lean"), "\n"))
 vim.list_extend(source_files, vim.split(vim.fn.glob("Dedukti/*.lean"), "\n"))
 
+local prev_trans_file = vim.fn.stdpath("data") .. "/" .. "prev_trans.json"
+local prev_trans = vim.fn.filereadable(prev_trans_file) ~= 0 and vim.fn.json_decode(vim.fn.readfile(prev_trans_file)) or {}
+local curr_trans_file
+
+-- choose the most recently translated file
+local max_ts = 0
+for prev, time in pairs(prev_trans) do
+  if time > max_ts then
+    curr_trans_file = prev
+    max_ts = time
+  end
+end
+
 local templates = {
   ["translate"] = {
-    builder = function()
+    builder = function(params)
       return {
         cmd = { "lake" },
-        args = { "run", "trans", "Test.lean" },
+        args = { "run", "trans", params.file },
         components = {
           { "restart_on_save", paths = source_files},
           "default",
@@ -31,7 +44,7 @@ local templates = {
     builder = function(params)
       return {
         cmd = { "lake" },
-        args = { "run", "trans", "Test.lean", "--print", "--write", "--only", params.only},
+        args = { "run", "trans", params.file, "--print", "--write", "--only", params.only},
         components = {
           { "restart_on_save", paths = source_files},
           "default",
@@ -93,7 +106,55 @@ local function run_only(only)
   prev_onlys[only] = os.time()
   local json = vim.fn.json_encode(prev_onlys)
   vim.fn.writefile({json}, prev_onlys_file)
-  overseer.run_template({name = "translate only", params = {only = only}}, task_split)
+  overseer.run_template({name = "translate only", params = {only = only, file = curr_trans_file}}, task_split)
+end
+
+local function choose_trans(trans_file)
+  prev_trans[trans_file] = os.time()
+  local json = vim.fn.json_encode(prev_trans)
+  vim.fn.writefile({json}, prev_trans_file)
+  curr_trans_file = trans_file
+end
+
+local transfile_picker = function(opts)
+  opts = opts or {}
+
+  local results = {}
+
+  for _, file in ipairs(vim.fn.split(vim.fn.glob("fixtures/**/*.lean"), "\n")) do
+    file = vim.loop.fs_realpath(file)
+    if file ~= curr_trans_file then
+      table.insert(results, file)
+    end
+  end
+
+  return pickers
+    .new(opts, {
+      prompt_title = string.format("Choose file to translate (current: %s)", vim.fn.fnamemodify(curr_trans_file, ":t")),
+      finder = finders.new_table {
+        results = results,
+        entry_maker = opts.entry_maker or make_entry.gen_from_file(opts),
+      },
+      sorter = sorters.Sorter:new {
+        discard = true,
+
+        scoring_function = function(_, _, line)
+          return prev_trans[line] and -prev_trans[line] or 0
+        end,
+      },
+      previewer = conf.grep_previewer(opts),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          local selection = action_state.get_selected_entry()
+
+          actions.close(prompt_bufnr)
+          print(selection.value)
+          choose_trans(selection.value)
+        end)
+
+        return true
+      end,
+    })
 end
 
 local only_picker = function(opts) return pickers
@@ -146,8 +207,9 @@ for name, template in pairs(templates) do
   overseer.register_template(template)
 end
 
-vim.keymap.set("n", "<leader>tt", function () overseer.run_template({name = "translate"}, task_split) end)
+vim.keymap.set("n", "<leader>tt", function () overseer.run_template({name = "translate", params = {file = curr_trans_file}}, task_split) end)
 vim.keymap.set("n", "<leader>tc", function () overseer.run_template({name = "check"}, task_split) end)
 vim.keymap.set("n", "<leader>to", function () run_only(vim.fn.input("enter constant names (comma-separated, no whitespace): ")) end)
 vim.keymap.set("v", "<leader>to", function () run_only(region_to_text()) end)
 vim.keymap.set("n", "<leader>tO", function () only_picker():find() end)
+vim.keymap.set("n", "<leader>tf", function () transfile_picker():find() end)

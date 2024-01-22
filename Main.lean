@@ -24,7 +24,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
         IO.FS.writeFile "dk/out.dk" dkEnvString
 
 def runTransCmd (p : Parsed) : IO UInt32 := do
-  let path := ⟨"Test.lean"⟩
+  let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)

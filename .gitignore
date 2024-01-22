@@ -8,6 +8,7 @@ sess.vim
 /lake-manifest.json
 /dk/out.dk
 stdout
+/fixtures/stdlib/
 *.dko
 .depend
 /.lake

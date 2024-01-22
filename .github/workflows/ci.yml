@@ -30,4 +30,4 @@ jobs:
       - uses: Julian/setup-lean@v1
 
       - name: Test translation
-        run: eval $(opam env) && lake run trans Test.lean
+        run: eval $(opam env) && lake run trans fixtures/Test.lean
