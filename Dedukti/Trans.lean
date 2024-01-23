@@ -87,7 +87,7 @@ mutual
                           fun app i => do pure $ .app app $ .var $ (← read).fvars.size - 1 - i
                       | _ => throw $ .error default s!"encountered unknown free variable {e}"
     | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
-    | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
+    | .mdata _ e => fromExpr e
 
   partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
     pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr e)]
@@ -105,8 +105,10 @@ mutual
   partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
   withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← get).constName
-    let type ← fromExprAsType cnst.type
-    let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
+    let getType' (type : Lean.Expr) := do
+      let type ← fromExprAsType type
+      pure $ cnst.levelParams.foldr (init := type) fun _ curr => Expr.pi (.const `lvl.Lvl) curr
+    let getType := getType' cnst.type
     match cnst with
     | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
     | .defnInfo     (val : Lean.DefinitionVal)
@@ -123,14 +125,14 @@ mutual
         if (← read).transDeps then
           transNamedConst projInfo.ctorName
 
-        pure $ .definable name type [.mk (numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
+        pure $ .definable name (← getType) [.mk (numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
       else
         let value ← fromExpr val.value
         let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
-        pure $ .definable name type [.mk 0 (.const name) value]
+        pure $ .definable name (← getType) [.mk 0 (.const name) value]
     | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
-    | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
+    | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name (← getType)
     | .ctorInfo     (val : Lean.ConstructorVal) => do
       if Lean.isStructure env val.induct then
         -- dbg_trace s!"found struct: {val.induct} with ctor: {name}"
@@ -162,21 +164,58 @@ mutual
         let rhs := .var 0
 
         -- dbg_trace s!"found struct: {ctor.name}"
-        pure $ .definable name type [.mk numVars lhs rhs] -- TODO make injective
+        pure $ .definable name (← getType) [.mk numVars lhs rhs] -- TODO make injective
       else
-        pure $ .static name type
+        pure $ .static name (← getType)
     | .recInfo      (val : Lean.RecursorVal) => do
       -- dbg_trace s!"{cnst.levelParams}"
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
+      let largeElim ← forallTelescope val.type fun domVars bod => do
+        let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
+        forallTelescope (← inferType motiveArg) fun _ out =>
+          match out with
+          | .sort .zero => pure false
+          | _ => pure true
+      let ctorLvlOffset := if largeElim then 1 else 0 -- if large-eliminating, first level param is output sort level
+
+      let type ←
+        if val.k then
+          -- let rec faArgs : Lean.Expr → Array (Name × Lean.Expr × Lean.BinderInfo)
+          -- | .forallE n dom img b => #[(n, dom, b)] ++ faArgs img
+          -- | e => #[(default, e, default)]
+          --
+          let minorPremiseInd := 1 + val.numParams
+          --
+          -- let args := faArgs val.type
+          -- let (_, minorPremise, _) := args[minorPremiseInd]!
+          -- let (_, targetType, _) := args[args.size - 1]!
+
+          let newType ← forallTelescope val.type fun domVars bod => do
+            let minorPremiseType ← inferType domVars[minorPremiseInd]!
+            mkForallFVars domVars minorPremiseType
+
+          
+          -- dbg_trace s!"{minorPremise}"
+          -- let newExpr := args[:args.size - 1].foldr (init := minorPremise) fun (n, argType, b) acc => Lean.Expr.forallE n argType acc b
+          -- dbg_trace s!"{newExpr}"
+
+          getType' newType
+          -- let r1 := val.rules[0]!
+          -- let some ctor := env.find? r1.ctor | throw $ .error default s!"could not find constructor {r1.ctor}?!"
+          -- let numCtorLvls := ctor.levelParams.length
+          -- let ctorLvls := lvls[ctorLvlOffset:numCtorLvls+ctorLvlOffset].toArray.toList -- FIXME D:
+          -- forallTelescope cnst.type fun domVars img => do 
+          --   let some motiveArg := domVars.get? val.numParams | throw $ .error default s!"impossible case"
+          --   let img := img.replaceFVars #[domVars[domVars.size - 1]!] #[← inferType motiveArg] -- for k-like inductives, change the output type so that the rewrite rule will typecheck
+          --   withTypedFVars domVars $ getType' $ ← domVars.foldrM (init := img) fun var acc => do pure $ Lean.mkForall var.fvarId!.name default (← inferType var) acc
+        else
+          getType
+
       let rules ← val.rules.foldlM (init := []) fun acc r => do
         -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
           let some motiveArg := domVars.get? val.numParams | throw $ .error default "impossible case"
           let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
-          let largeElim : Bool ← forallTelescope (← inferType motiveArg) fun _ out =>
-            match out with
-            | .sort .zero => pure false
-            | _ => pure true
 
           let outType ← inferType bod
           let outFn := outType.getAppFn
@@ -185,22 +224,28 @@ mutual
           let outArgs := outType.getAppArgs
           let idxArgs := outArgs[:outArgs.size - 1]
 
-          let ctorLvlOffset := if largeElim then 1 else 0 -- if large-eliminating, first param is output sort
           let numCtorLvls := ctor.levelParams.length
           let ctorLvls := lvls[ctorLvlOffset:numCtorLvls+ctorLvlOffset].toArray.toList -- FIXME D:
 
-          let newParams ← domVars[:val.numParams].foldlM (init := #[]) fun x param => do
-            let paramType ← inferType param
-            pure $ x.append #[(param.fvarId!.name ++ `New, default, fun prevParams => pure $ paramType.replaceFVars domVars[:prevParams.size] prevParams)]
+          let newParams ←
+            if val.k then 
+              -- FIXME construct type directly
+              let KCtorType ← inferType $ Lean.mkAppN (.const r.ctor ctorLvls) $ domVars[:val.numParams] ++ domVars[domVars.size - r.nfields:]
+              pure #[(`KCtor, default, fun _ => pure KCtorType)]
+            else
+              domVars[:val.numParams].foldlM (init := #[]) fun x param => do
+                let paramType ← inferType param
+                pure $ x.append #[(param.fvarId!.name ++ `New, default, fun prevParams => pure $ paramType.replaceFVars domVars[:prevParams.size] prevParams)]
 
           withLocalDecls newParams λ newParamVars => do -- use fresh parameter variables to avoid non-left-linearity
-            let ctorAppLean := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ newParamVars ++ domVars[domVars.size - r.nfields:]
+            let ctorAppLean := if val.k then newParamVars[0]!
+              else Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ newParamVars ++ domVars[domVars.size - r.nfields:]
             let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorAppLean]
             -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
             let (lhs, rhs) ← withTypedFVars (domVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
 
-            let numVars := cnst.levelParams.length + domVars.size + val.numParams -- duplicate numParams for left-linear vars
+            let numVars := cnst.levelParams.length + domVars.size + newParamVars.size -- duplicate numParams for left-linear vars
             pure $ .mk numVars lhs rhs :: acc
 
       pure $ .definable name type rules
@@ -234,4 +279,6 @@ def translateEnv (consts? : Option $ Array Name := none) (transDeps : Bool := fa
         transConst cinfo
   )
 
+#print Eq.rec
+#print cast
 end Trans
