@@ -48,8 +48,9 @@ def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
 
 -- TODO is there an API function to keep track of levels inside of MetaM?
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
-  let lvlParams ← params.length.foldM (init := default) fun i curr =>  
-    pure $ curr.insert params[i]! i
+  let currLvls := (← read).lvlParams
+  let lvlParams ← params.length.foldM (init := currLvls) fun i curr =>  
+    pure $ curr.insert params[i]! (currLvls.size + i)
   withReader (fun ctx => { ctx with lvlParams }) m
 
 def withFVars (fvarTypes : Std.RBMap Name Expr compare) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do

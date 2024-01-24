@@ -1,7 +1,7 @@
 prelude
 set_option linter.all false -- prevent runFrontend error messages
 
-universe u v
+universe u v w
 
 inductive True : Prop where
   | intro : True
@@ -13,6 +13,14 @@ def id {T : Sort u} : T → T := λ x : T => x
 inductive Nat : Type where
   | zero : Nat
   | succ : Nat → Nat
+
+-- large-eliminating with universe arg
+inductive Eq {α : Type u} : α → α → Prop where
+  | refl {a : α} : Eq a a
+
+#print Eq.rec
+
+-- TODO large-eliminating with multiple universe args
 
 inductive Unit : Prop where
   | mk : Unit
@@ -31,6 +39,7 @@ inductive U : Unit → Prop where
 -- [l, u, motive, mk] U_rec (normalize.maxS l) u motive mk (U_mk u) --> mk.
 inductive UDep : (n : Nat) → UnitDep n → Prop where
   | mk : UDep n u
+#print Unit.recOn
 
 -- TODO test inductive type family (as opposed to indexed inductive type)
 -- inductive U (u : Unit) : Type where
@@ -49,12 +58,6 @@ def idtest : Nat := id Nat.zero
 
 noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
   Nat.rec a (fun _ sum => Nat.succ sum) b
-
--- large-eliminating with universe arg
-inductive Eq {α : Type u} : α → α → Prop where
-  | refl {a : α} : Eq a a
-
--- TODO large-eliminating with multiple universe args
 
 -- small-eliminating with universe arg
 inductive Exists {α : Sort u} (p : α → Prop) : Prop where
@@ -103,7 +106,7 @@ noncomputable def letTestBinders : Nat → Bool → Prop :=
   y
   (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
 
-structure Point (U V W : Type u) : Type u where
+structure Point (U : Type u) (V : Type v) (W : Type w) where
 mk :: (x : U) (z : V) (y : W)
 
 def projTest1 : Eq (Point.mk x y z).x x := Eq.refl
@@ -111,6 +114,17 @@ def projTest2 : Eq (Point.mk x y z).y z := Eq.refl
 def projTest3 : Eq (Point.mk x y z).z y := Eq.refl
 
 def etaTest : Eq p (Point.mk p.x p.z p.y) := Eq.refl
+
+namespace K -- FIXME implement k-like reduction
+  def test (u : Unit) : Eq (Unit.rec Type u) Type := Eq.refl
+
+  structure Point : Type u where
+  mk :: (x : Unit) (y : Unit)
+
+  inductive T : Unit → Unit → Type
+
+  def pkTest (p : Point) : Eq (Point.rec (fun x y => T x y) p) (T p.x p.y) := Eq.refl
+end K
 
 -- def multiUnivTest (T1 : Sort u) (T2 : Sort v) : Sort v := T2
 
