@@ -17,6 +17,7 @@ def fromLevel' : Lean.Level → TransM Level
   | .param p    => do
      let some i := (← read).lvlParams.find? p
       | throw $ .error default s!"unknown universe parameter {p} encountered"
+     -- dbg_trace s!"{p}: {i}"
      pure $ .var i
      -- TODO deep encoding
      -- let some i := (← read).lvlParams.find? p
@@ -42,6 +43,7 @@ mutual
     | .const name lvls => do
       if (← read).transDeps then
         transNamedConst name
+      -- dbg_trace s!"translating const {name} with levels: {lvls} --> {repr $ ← lvls.mapM fromLevel}"
       pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
     | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
@@ -101,7 +103,7 @@ mutual
     withFVars fvarTypes fvars m
 
   partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
-  withNewConstant (fixLeanName cnst.name) $ withLvlParams cnst.levelParams do
+  withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← get).constName
     let type ← fromExprAsType cnst.type
     let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
@@ -164,6 +166,7 @@ mutual
       else
         pure $ .static name type
     | .recInfo      (val : Lean.RecursorVal) => do
+      -- dbg_trace s!"{cnst.levelParams}"
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
       let rules ← val.rules.foldlM (init := []) fun acc r => do
         -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
@@ -193,6 +196,7 @@ mutual
           withLocalDecls newParams λ newParamVars => do -- use fresh parameter variables to avoid non-left-linearity
             let ctorAppLean := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ newParamVars ++ domVars[domVars.size - r.nfields:]
             let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorAppLean]
+            -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
             let (lhs, rhs) ← withTypedFVars (domVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
 
