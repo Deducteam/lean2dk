@@ -12,7 +12,8 @@ local conf = require("telescope.config").values
 local source_files = {}
 vim.list_extend(source_files, vim.split(vim.fn.glob("dk/*.dk"), "\n"))
 vim.list_extend(source_files, vim.split(vim.fn.glob("*.lean"), "\n"))
-vim.list_extend(source_files, vim.split(vim.fn.glob("Dedukti/*.lean"), "\n"))
+vim.list_extend(source_files, vim.split(vim.fn.glob("Dedukti/**/*.lean"), "\n"))
+vim.list_extend(source_files, vim.split(vim.fn.glob("fixtures/**/*.lean"), "\n"))
 
 local prev_trans_file = vim.fn.stdpath("data") .. "/" .. "prev_trans.json"
 local prev_trans = vim.fn.filereadable(prev_trans_file) ~= 0 and vim.fn.json_decode(vim.fn.readfile(prev_trans_file)) or {}
@@ -150,6 +151,9 @@ local transfile_picker = function(opts)
           actions.close(prompt_bufnr)
           print(selection.value)
           choose_trans(selection.value)
+          if curr_task then
+            overseer.run_action(curr_task, "restart")
+          end
         end)
 
         return true

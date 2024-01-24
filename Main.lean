@@ -26,6 +26,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
+  IO.println s!"Translating file: {fileName}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
