@@ -117,13 +117,15 @@ mutual
         let numFields ← match env.find? projInfo.ctorName with
           | some (.ctorInfo { numFields := n, .. }) => pure n
           | _ => throw $ .error default s!"impossible case"
-        let numParams := cnst.levelParams.length + projInfo.numParams
-        let projAppPartial := numParams.foldRev (init := .const name) fun i app => .app app $ .var (i + numFields + numParams)
-        let ctorApp := (numParams + numFields).foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ .var i
+        let numParams := projInfo.numParams
+        let numLevels := cnst.levelParams.length -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
+        let projAppPartial := (numLevels + numParams).foldRev (init := .const name) fun i app => .app app $ .var (i + numFields + numParams)
+        let ctorApp := numLevels.foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ .var (i + numFields + numParams + numParams)
+        let ctorApp := (numParams + numFields).foldRev (init := ctorApp) fun i app => .app app $ .var i
         if (← read).transDeps then
           transNamedConst projInfo.ctorName
 
-        pure $ .definable name type [.mk (numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
+        pure $ .definable name type [.mk (numLevels + numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
       else
         let value ← fromExpr val.value
         let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
@@ -147,16 +149,17 @@ mutual
           | .none => throw $ .error default "impossible case"
 
         let numLevels := val.levelParams.length
-        let numParams := val.numParams
-        let numVars := numLevels + numParams + numLevels + numParams + 1 -- TODO don't have to worry about indices, right?
+        let numParams := val.numParams -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
+        let numVars := numLevels + numParams + numParams + 1 -- TODO don't have to worry about indices, right?
 
-        -- TODO universes?
-        let ctorWithUnivs := numLevels.foldRev (init := .const name) fun i acc => .app acc (.var (i + numParams + numLevels + numParams + 1))
-        let ctorApp := val.numParams.foldRev (init := ctorWithUnivs) fun i acc => .app acc (.var (i + numLevels + numParams + 1))
+        -- make eta rule
+        let ctorWithUnivs := numLevels.foldRev (init := .const name) fun i acc => .app acc (.var (i + numParams + numParams + 1))
+        let ctorApp := val.numParams.foldRev (init := ctorWithUnivs) fun i acc => .app acc (.var (i + numParams + 1))
 
         let lhs := projFns.foldl (init := ctorApp)
           fun acc fn =>
-            let prjApp := (numLevels + numParams).foldRev (init := fn) fun i acc => .app acc (.var (i + 1))
+            let prjApp := numLevels.foldRev (init := fn) fun i acc => .app acc (.var (i + numParams + numParams + 1))
+            let prjApp := numParams.foldRev (init := prjApp) fun i acc => .app acc (.var (i + 1))
             .app acc (.app prjApp (.var 0))
 
         let rhs := .var 0

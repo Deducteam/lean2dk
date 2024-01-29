@@ -1,7 +1,7 @@
 prelude
 set_option linter.all false -- prevent runFrontend error messages
 
-universe u v
+universe u v w
 
 inductive True : Prop where
   | intro : True
@@ -103,7 +103,7 @@ noncomputable def letTestBinders : Nat → Bool → Prop :=
   y
   (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
 
-structure Point (U V W : Type u) : Type u where
+structure Point (U : Type u) (V : Type v) (W : Type w) where
 mk :: (x : U) (z : V) (y : W)
 
 def projTest1 : Eq (Point.mk x y z).x x := Eq.refl
