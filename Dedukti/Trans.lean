@@ -172,39 +172,39 @@ mutual
       -- dbg_trace s!"{cnst.levelParams}"
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
       let rules ← val.rules.foldlM (init := []) fun acc r => do
-        -- IO.print s!"rule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
+        IO.print s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
-          let some motiveArg := domVars.get? val.numParams | throw $ .error default "impossible case"
           let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
-          let largeElim : Bool ← forallTelescope (← inferType motiveArg) fun _ out =>
-            match out with
-            | .sort .zero => pure false
-            | _ => pure true
 
           let outType ← inferType bod
-          let outFn := outType.getAppFn
-          -- sanity check
-          if outFn != motiveArg then throw $ .error default s!"output type is not motive application" 
+          -- -- sanity check
+          -- if outType.getAppFn != motiveArg then throw $ .error default s!"output type is not motive application" 
           let outArgs := outType.getAppArgs
-          let idxArgs := outArgs[:outArgs.size - 1]
+          let idxArgsOrig := if outArgs.size > 1 then outArgs[:outArgs.size - 1].toArray else #[]
+          let ctorAppOrig := outArgs[outArgs.size - 1]!
+          let idxVars := idxArgsOrig.foldl (init := #[]) fun acc arg =>
+            if arg.isFVar then acc ++ #[arg] else acc
 
-          let ctorLvlOffset := if largeElim then 1 else 0 -- if large-eliminating, first param is output sort
-          let numCtorLvls := ctor.levelParams.length
-          let ctorLvls := lvls[ctorLvlOffset:numCtorLvls+ctorLvlOffset].toArray.toList -- FIXME D:
 
-          let newParams ← domVars[:val.numParams].foldlM (init := #[]) fun x param => do
+          -- let numCtorLvls := ctor.levelParams.length
+          -- let ctorLvlOffset := cnst.levelParams.length - ctor.levelParams.length-- if large-eliminating, first param is output sort
+
+          let dupParams (origParams : Array Lean.Expr) := origParams.foldlM (init := #[]) fun x param => do
             let paramType ← inferType param
-            pure $ x.append #[(param.fvarId!.name ++ `New, default, fun prevParams => pure $ paramType.replaceFVars domVars[:prevParams.size] prevParams)]
+            pure $ x.append #[(param.fvarId!.name ++ `New, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)]
 
-          withLocalDecls newParams λ newParamVars => do -- use fresh parameter variables to avoid non-left-linearity
-            let ctorAppLean := Lean.mkAppN (.const (fixLeanName r.ctor) ctorLvls) $ newParamVars ++ domVars[domVars.size - r.nfields:]
-            let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgs ++ #[ctorAppLean]
-            -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
-            let (lhs, rhs) ← withTypedFVars (domVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
+          withLocalDecls (← dupParams idxVars) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
+            withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- FIXME better way than double-nesting?
+              let idxArgsLean := idxArgsOrig.map fun arg => arg.replaceFVars idxVars newIdxVars -- reconstruct index arguments
+              let ctorAppLean := ctorAppOrig.replaceFVars domVars[:val.numParams] newParamVars
+              let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgsLean ++ #[ctorAppLean]
+              -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
-            let numVars := cnst.levelParams.length + domVars.size + val.numParams -- duplicate numParams for left-linear vars
-            pure $ .mk numVars lhs rhs :: acc
+              let (lhs, rhs) ← withTypedFVars (domVars ++ newIdxVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
+
+              let numVars := cnst.levelParams.length + domVars.size + newParamVars.size + newIdxVars.size
+              pure $ .mk numVars lhs rhs :: acc
 
       pure $ .definable name type rules
 

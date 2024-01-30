@@ -17,7 +17,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
       if let some only := only? then
         for name in only do
           let constString := s.printedConsts.find! (fixLeanName name.toName)
-          IO.println constString
+          IO.println $ "\n" ++ constString
       else
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"

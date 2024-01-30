@@ -42,7 +42,7 @@ inductive Vec : Unit → Type where
 
 -- #print UDep.rec
 -- #print U.rec
--- #print Vec.rec
+#print Vec.rec
 -- #print Nat.rec
 
 def idtest : Nat := id Nat.zero
@@ -111,6 +111,24 @@ def projTest2 : Eq (Point.mk x y z).y z := Eq.refl
 def projTest3 : Eq (Point.mk x y z).z y := Eq.refl
 
 def etaTest : Eq p (Point.mk p.x p.z p.y) := Eq.refl
+
+-- mutual
+--     inductive Tree {α : Type u} : Nat → Type u where
+--       | node : α → TreeList n → Tree n
+--
+--     inductive TreeList {α : Type u} : Nat → Type u where
+--       | nil  : TreeList Nat.zero
+--       | cons : Tree n → TreeList m → TreeList (Nat.add m n)
+-- end
+-- Tree.rec.{u_1, u} {α : Type u} {motive_1 : (a : Nat) → Tree a → Sort u_1} {motive_2 : (a : Nat) → TreeList a → Sort u_1}
+--   (node : {n : Nat} → (a : α) → (a_1 : TreeList n) → motive_2 n a_1 → motive_1 n (Tree.node a a_1))
+--   (nil : motive_2 Nat.zero TreeList.nil)
+--   (cons :
+--     {n m : Nat} →
+--       (a : Tree n) → (a_1 : TreeList m) → motive_1 n a → motive_2 m a_1 → motive_2 (Nat.add m n) (TreeList.cons a a_1))
+--   {a✝ : Nat} (t : Tree a✝) : motive_1 a✝ t
+
+-- #print Tree.rec
 
 -- def multiUnivTest (T1 : Sort u) (T2 : Sort v) : Sort v := T2
 
