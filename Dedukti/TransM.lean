@@ -38,7 +38,7 @@ def withNewConstant (constName : Name) (m : TransM α) : TransM α := do
   m
 
 def withResetCtx : TransM α → TransM α :=
-  withReader fun ctx => { ctx with fvars := #[], lvlParams := default }
+  withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false }
 
 def withNoLVarNormalize : TransM α → TransM α :=
   withReader fun ctx => { ctx with noLVarNormalize := true }

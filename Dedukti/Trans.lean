@@ -169,12 +169,11 @@ mutual
       else
         pure $ .static name type
     | .recInfo      (val : Lean.RecursorVal) => do
-      -- dbg_trace s!"{cnst.levelParams}"
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
       let rules ← val.rules.foldlM (init := []) fun acc r => do
-        IO.print s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
+        -- IO.print s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
-          let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
+          -- let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
 
           let outType ← inferType bod
           -- -- sanity check
@@ -191,14 +190,13 @@ mutual
 
           let dupParams (origParams : Array Lean.Expr) := origParams.foldlM (init := #[]) fun x param => do
             let paramType ← inferType param
-            pure $ x.append #[(param.fvarId!.name ++ `New, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)]
+            pure $ x.append #[(default, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)] -- FIXME do I need to generate unique names here? e.g. param.fvarId!.name ++ `New
 
-
-          withLocalDecls (← dupParams idxVars) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
+          withLocalDecls (← dupParams idxArgsOrig) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
             withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- FIXME better way than double-nesting?
-              let idxArgsLean := idxArgsOrig.map fun arg => arg.replaceFVars idxVars newIdxVars -- reconstruct index arguments
+              -- let idxArgsLean ← idxArgsOrig.mapM fun arg => reduce $ arg.replaceFVars idxVars newIdxVars -- reconstruct index arguments; must reduce because they appear on the LHS of the rewrite rule
               let ctorAppLean := ctorAppOrig.replaceFVars domVars[:val.numParams] newParamVars
-              let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgsLean ++ #[ctorAppLean]
+              let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ newIdxVars ++ #[ctorAppLean]
               -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
               let (lhs, rhs) ← withTypedFVars (domVars ++ newIdxVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)

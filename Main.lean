@@ -16,7 +16,9 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
       let dkEnvString := "\n\n".intercalate s.out
       if let some only := only? then
         for name in only do
+          let maxConstPrint := 400 -- FIXME make "constant"
           let constString := s.printedConsts.find! (fixLeanName name.toName)
+          let constString := if constString.length > maxConstPrint then constString.extract ⟨0⟩ ⟨maxConstPrint⟩ ++ "..." else constString
           IO.println $ "\n" ++ constString
       else
         let dkPrelude := "#REQUIRE normalize.\n"
@@ -26,7 +28,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
-  IO.println s!"Translating file: {fileName}"
+  IO.println s!"\nTranslating file: {fileName}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
@@ -37,7 +39,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
 
   let mut write := true
   if let some onlyConsts := onlyConsts? then
-    IO.println s!"Only translating constants: {onlyConsts}"
+    IO.println s!"\nOnly translating constants: {onlyConsts}"
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
 
   let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)

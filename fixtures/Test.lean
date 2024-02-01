@@ -42,7 +42,7 @@ inductive Vec : Unit → Type where
 
 -- #print UDep.rec
 -- #print U.rec
-#print Vec.rec
+-- #print Vec.rec
 -- #print Nat.rec
 
 def idtest : Nat := id Nat.zero
@@ -112,14 +112,19 @@ def projTest3 : Eq (Point.mk x y z).z y := Eq.refl
 
 def etaTest : Eq p (Point.mk p.x p.z p.y) := Eq.refl
 
--- mutual
---     inductive Tree {α : Type u} : Nat → Type u where
---       | node : α → TreeList n → Tree n
---
---     inductive TreeList {α : Type u} : Nat → Type u where
---       | nil  : TreeList Nat.zero
---       | cons : Tree n → TreeList m → TreeList (Nat.add m n)
--- end
+mutual
+    inductive Tree {α : Type u} : Nat → Type u where
+      | node : α → TreeList n → Tree n
+
+    inductive TreeList {α : Type u} : Nat → Type u where
+      | nil  : TreeList Nat.zero
+      | cons : Tree n → TreeList m → TreeList (Nat.add m n)
+end
+
+-- def nestTest : Eq (Tree.rec (fun a _ n => a + n) 0 (fun _ _ n n' => n + n') (Tree.node 1 (TreeList.cons (Tree.node 1 TreeList.nil) TreeList.nil))) 2 :=  Eq.refl _ -- FIXME add metaprogramming so can write like this
+noncomputable def nestTest' : Nat := (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil)))
+def nestTest : Eq (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil))) (Nat.succ (Nat.succ (Nat.zero))) :=  Eq.refl
+
 -- Tree.rec.{u_1, u} {α : Type u} {motive_1 : (a : Nat) → Tree a → Sort u_1} {motive_2 : (a : Nat) → TreeList a → Sort u_1}
 --   (node : {n : Nat} → (a : α) → (a_1 : TreeList n) → motive_2 n a_1 → motive_1 n (Tree.node a a_1))
 --   (nil : motive_2 Nat.zero TreeList.nil)
