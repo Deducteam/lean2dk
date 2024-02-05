@@ -28,7 +28,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
-  IO.println s!"\nTranslating file: {fileName}"
+  IO.println s!"\n>> Translating file: {fileName}\n"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
@@ -39,7 +39,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
 
   let mut write := true
   if let some onlyConsts := onlyConsts? then
-    IO.println s!"\nOnly translating constants: {onlyConsts}"
+    IO.println s!"\n>> Only translating constants: {onlyConsts}"
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
 
   let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)

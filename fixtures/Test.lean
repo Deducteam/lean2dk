@@ -112,18 +112,46 @@ def projTest3 : Eq (Point.mk x y z).z y := Eq.refl
 
 def etaTest : Eq p (Point.mk p.x p.z p.y) := Eq.refl
 
-mutual
-    inductive Tree {α : Type u} : Nat → Type u where
-      | node : α → TreeList n → Tree n
+-- -- TODO large- or small-eliminating recursor?
+-- set_option bootstrap.inductiveCheckResultingUniverse false in
+-- inductive PUnit : Sort u where
+--   /-- `PUnit.unit : PUnit` is the canonical element of the unit type. -/
+--   | unit : PUnit
 
-    inductive TreeList {α : Type u} : Nat → Type u where
-      | nil  : TreeList Nat.zero
-      | cons : Tree n → TreeList m → TreeList (Nat.add m n)
-end
+-- mutual -- FIXME "feature not implemented" Dedukti error
+--   inductive Even : Nat → Type where
+--     | even_zero : Even Nat.zero
+--     | even_succ : (n : Nat) → Odd n → Even (Nat.succ n)
+--
+--   inductive Odd : Nat → Type where
+--     | odd_succ : (n : Nat) → Even n → Odd (Nat.succ n)
+-- end
+
+-- -- needed for nested recursors
+
+inductive List (α : Type u) where
+  /-- `[]` is the empty list. -/
+  | nil : List α
+  /-- If `a : α` and `l : List α`, then `cons a l`, or `a :: l`, is the
+  list whose first element is `a` and with `l` as the rest of the list. -/
+  | cons (head : α) (tail : List α) : List α
+
+-- --
+
+def one : Nat := Nat.succ (Nat.zero)
+def two : Nat := Nat.succ (Nat.succ (Nat.zero))
+
+inductive Tree (α : Type u) where
+  | mk : α → List (Tree α) → Tree α
+
+noncomputable def treeSum (t : Tree Nat) : Nat :=
+  Tree.rec (fun n _ st => .add n st) Nat.zero (fun _ _ sh st => .add sh st) t
+
+theorem treeSumTest : Eq (treeSum (.mk one (.cons (.mk one .nil) .nil))) two := Eq.refl
 
 -- def nestTest : Eq (Tree.rec (fun a _ n => a + n) 0 (fun _ _ n n' => n + n') (Tree.node 1 (TreeList.cons (Tree.node 1 TreeList.nil) TreeList.nil))) 2 :=  Eq.refl _ -- FIXME add metaprogramming so can write like this
-noncomputable def nestTest' : Nat := (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil)))
-def nestTest : Eq (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil))) (Nat.succ (Nat.succ (Nat.zero))) :=  Eq.refl
+-- noncomputable def nestTest' : Nat := (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil)))
+-- def nestTest : Eq (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil))) (Nat.succ (Nat.succ (Nat.zero))) :=  Eq.refl
 
 -- Tree.rec.{u_1, u} {α : Type u} {motive_1 : (a : Nat) → Tree a → Sort u_1} {motive_2 : (a : Nat) → TreeList a → Sort u_1}
 --   (node : {n : Nat} → (a : α) → (a_1 : TreeList n) → motive_2 n a_1 → motive_1 n (Tree.node a a_1))
