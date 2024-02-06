@@ -16,29 +16,29 @@ def fromLevel' : Lean.Level → TransM Level
   | .imax l1 l2 => do pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
   | .param p    => do
      let some i := (← read).lvlParams.find? p
-      | throw $ .error default s!"unknown universe parameter {p} encountered"
+      | tthrow s!"unknown universe parameter {p} encountered"
      -- dbg_trace s!"{p}: {i}"
      pure $ .var i
      -- TODO deep encoding
      -- let some i := (← read).lvlParams.find? p
-     --  | throw $ .error default s!"unknown universe parameter {p} encountered"
+     --  | tthrow s!"unknown universe parameter {p} encountered"
      -- pure $ .var i 
 
-  | .mvar _     => throw $ .error default "unexpected universe metavariable encountered"
+  | .mvar _     => tthrow "unexpected universe metavariable encountered"
 
 def fromLevel (l : Lean.Level) : TransM Expr := do (← fromLevel' l).toExpr
 
 def levelFromExpr (expr : Lean.Expr) : TransM Level := do
   match expr with
     | .sort l => pure $ ← fromLevel' l
-    | _ => throw $ .error default s!"expected sort but encountered {expr.ctorName}"
+    | _ => tthrow s!"expected sort but encountered {expr.ctorName} -- {expr.dbgToString}"
     
 def levelFromInferredType (e : Lean.Expr) : TransM Level := do
   levelFromExpr $ ← inferType e -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
 
 mutual
   partial def fromExpr : Lean.Expr → TransM Expr
-    | .bvar _ => throw $ .error default "unexpected bound variable encountered"
+    | .bvar _ => tthrow "unexpected bound variable encountered"
     | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
     | .const name lvls => do
       if (← read).transDeps then
@@ -66,7 +66,7 @@ mutual
 
         let type ← (← read).fvars.foldrM (init := ← fromExprAsType typ) fun fvar acc => do
           let name := fvar.fvarId!.name
-          let some dom ← do pure $ (← read).fvarTypes.find? name | throw $ .error default s!"could not find type of free variable"
+          let some dom ← do pure $ (← read).fvarTypes.find? name | tthrow s!"could not find type of free variable"
           pure $ .pi dom acc
 
         let val ← fromExpr val
@@ -85,7 +85,7 @@ mutual
                       | some (nFvars, constName) =>
                         List.range nFvars |>.foldlM (init := (.const constName))
                           fun app i => do pure $ .app app $ .var $ (← read).fvars.size - 1 - i
-                      | _ => throw $ .error default s!"encountered unknown free variable {e}"
+                      | _ => tthrow s!"encountered unknown free variable {e}"
     | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
     | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
 
@@ -97,14 +97,14 @@ mutual
       let xDecl ← getFVarLocalDecl fvar
       let leanType ← match xDecl with
       | .cdecl (type := t) .. => pure t
-      | _ => throw $ .error default s!"encountered unexpected let variable in list of free variables"
+      | _ => tthrow s!"encountered unexpected let variable in list of free variables"
       let type ← withFVars fvarTypes fvars $ fromExprAsType leanType -- TODO thunk this?
       pure (fvarTypes.insert fvar.fvarId!.name type, fvars.push fvar)
     withFVars fvarTypes fvars m
 
   partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
   withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
-    let name := (← get).constName
+    let name := (← read).constName
     let type ← fromExprAsType cnst.type
     let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
     match cnst with
@@ -113,10 +113,10 @@ mutual
     | .thmInfo      (val : Lean.TheoremVal) => do
       if ← Lean.isProjectionFn val.name then
         -- dbg_trace s!"projection function detected: {val.name}"
-        let some projInfo ← Lean.getProjectionFnInfo? val.name | throw $ .error default s!"impossible case"
+        let some projInfo ← Lean.getProjectionFnInfo? val.name | tthrow s!"impossible case"
         let numFields ← match env.find? projInfo.ctorName with
           | some (.ctorInfo { numFields := n, .. }) => pure n
-          | _ => throw $ .error default s!"impossible case"
+          | _ => tthrow s!"impossible case"
         let numParams := projInfo.numParams
         let numLevels := cnst.levelParams.length -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
         let projAppPartial := (numLevels + numParams).foldRev (init := .const name) fun i app => .app app $ .var (i + numFields + numParams)
@@ -137,7 +137,7 @@ mutual
       if Lean.isStructure env val.induct then
         -- dbg_trace s!"found struct: {val.induct} with ctor: {name}"
         let ctor := Lean.getStructureCtor env val.induct
-        let some info := Lean.getStructureInfo? env val.induct | throw $ .error default "impossible case"
+        let some info := Lean.getStructureInfo? env val.induct | tthrow "impossible case"
 
         let projFns ← info.fieldNames.mapM fun i =>
           match Lean.getProjFnForField? env val.induct i with
@@ -146,7 +146,7 @@ mutual
               transNamedConst projFn
 
             pure $ .const $ fixLeanName projFn
-          | .none => throw $ .error default "impossible case"
+          | .none => tthrow "impossible case"
 
         let numLevels := val.levelParams.length
         let numParams := val.numParams -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
@@ -173,11 +173,11 @@ mutual
       let rules ← val.rules.foldlM (init := []) fun acc r => do
         -- IO.print s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
-          -- let some ctor := env.find? r.ctor | throw $ .error default s!"could not find constructor {r.ctor}?!"
+          -- let some ctor := env.find? r.ctor | tthrow s!"could not find constructor {r.ctor}?!"
 
           let outType ← inferType bod
           -- -- sanity check
-          -- if outType.getAppFn != motiveArg then throw $ .error default s!"output type is not motive application" 
+          -- if outType.getAppFn != motiveArg then tthrow s!"output type is not motive application" 
           let outArgs := outType.getAppArgs
           let idxArgsOrig := if outArgs.size > 1 then outArgs[:outArgs.size - 1].toArray else #[]
           let ctorAppOrig := outArgs[outArgs.size - 1]!
@@ -220,7 +220,7 @@ mutual
       | none =>
         match (← read).env.constants.find? const with
         | some cinfo => transConst cinfo
-        | none => throw $ .error default s!"could not find constant \"{const}\" for translation, verify that it exists in the Lean input"
+        | none => tthrow s!"could not find constant \"{const}\" for translation, verify that it exists in the Lean input"
 
 end
 

@@ -33,6 +33,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     setPathsFlag.as! (Array String)
 
   -- run elaborator on Lean file
+  Lean.initSearchPath (← Lean.findSysroot)
   let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
   if not success then
     throw $ IO.userError $ "elab failed"

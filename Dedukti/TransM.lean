@@ -6,6 +6,7 @@ open Dedukti
 namespace Trans
 
 structure Context where
+  constName  : Name := default
   /-- Don't perform universe level normalization on variables; used in e.g. recursor rewrite rules. -/
   noLVarNormalize : Bool := false
   /-- Also translate any constant dependencies when they are encountered. -/
@@ -17,7 +18,6 @@ structure Context where
   lvlParams : Std.RBMap Name Nat compare := default
 
 structure State where
-  constName  : Name := default
   /-- Counter for lets encountered in a constant,
   to allow for uniquely naming auxilliary let definitions. -/
   numLets    : Nat := 0
@@ -34,8 +34,12 @@ abbrev TransM := ReaderT Context $ StateT State MetaM
   pure (a, s)
 
 def withNewConstant (constName : Name) (m : TransM α) : TransM α := do
-  set {(← get) with constName, numLets := 0}
-  m
+  withReader (fun ctx => { ctx with constName }) $ do 
+    set {(← get) with numLets := 0}
+    m
+
+def tthrow (msg : String) : TransM α := do -- FIXME is there a way to make this work with the original "throw" function?
+throw $ .error default s!"{msg}\nWhile translating: {(← read).constName}"
 
 def withResetCtx : TransM α → TransM α :=
   withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false }
@@ -57,7 +61,7 @@ def withFVars (fvarTypes : Std.RBMap Name Expr compare) (fvars : Array Lean.Expr
   let newFvarTypes := (← read).fvarTypes.mergeWith (fun _ _ t => t) fvarTypes
   withReader (fun ctx => { ctx with fvarTypes := newFvarTypes, fvars := newFvars }) m
 
-def nextLetName : TransM Name := do pure $ fixLeanName $ ((← get).constName).toString ++ "_let" ++ (toString (← get).numLets)
+def nextLetName : TransM Name := do pure $ fixLeanName $ ((← read).constName).toString ++ "_let" ++ (toString (← get).numLets)
 
 def withLet (varName : Name) (m : TransM α) : TransM α := do
   let newLvars := (← read).lvars.insert varName ((← read).fvars.size, ← nextLetName)

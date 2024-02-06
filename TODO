@@ -1,0 +1,3 @@
+- aliases in dk.out file for better readability
+- fix translation-file-switcher
+- status line componenet for current translation file, current translation constant
