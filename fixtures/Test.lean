@@ -95,16 +95,16 @@ noncomputable def letTest : Prop :=
   Bool.true
   (Bool.rec (motive := fun b => Bool.rec (motive := fun _ => Type) Nat Bool b) Nat.zero Bool.true x)
 
-noncomputable def letTestBinders : Nat → Bool → Prop :=
+structure Point (U : Type u) (V : Type v) (W : Type w) where
+mk :: (x : U) (z : V) (y : W)
+
+noncomputable def letTestBinders (f : Point A B C → Nat) : Point A B C → Bool → Prop :=
   fun n b =>
-  let x := Nat.succ (Bool.rec Nat.zero n b)
+  let x := Nat.succ (Bool.rec Nat.zero (f n) b)
   let y := (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
   Eq
   y
   (Nat.rec (motive := fun n => Nat.rec (motive := fun _ => Type) Bool (fun _ _ => Nat) n) Bool.true (fun _ _ => Nat.zero) x)
-
-structure Point (U : Type u) (V : Type v) (W : Type w) where
-mk :: (x : U) (z : V) (y : W)
 
 def projTest1 : Eq (Point.mk x y z).x x := Eq.refl
 def projTest2 : Eq (Point.mk x y z).y z := Eq.refl

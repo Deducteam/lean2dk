@@ -34,7 +34,7 @@ def levelFromExpr (expr : Lean.Expr) : TransM Level := do
     | _ => tthrow s!"expected sort but encountered {expr.ctorName} -- {expr.dbgToString}"
     
 def levelFromInferredType (e : Lean.Expr) : TransM Level := do
-  levelFromExpr $ ← inferType e -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
+  levelFromExpr $ ← reduceAll $ ← inferType e
 
 mutual
   partial def fromExpr : Lean.Expr → TransM Expr
@@ -50,17 +50,17 @@ mutual
                                 domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
                                   pure (.lam curr)
     | e@(.forallE ..) => forallTelescope e fun domVars img => do
-                                let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromExpr $ ← inferType img)) fun i (curr, s2) => do
+                                let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromInferredType img)) fun i (curr, s2) => do
                                   let domVar := domVars[i]!
                                   let dom ← inferType domVar
-                                  let s1 ← levelFromInferredType dom -- FIXME are we sure that this will be a .sort (as opposed to something that reduces to .sort)? if not, it may contain fvars
+                                  let s1 ← levelFromInferredType dom
                                   let s3 := Level.imax s1 s2
                                   --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
                                   let ret ← withTypedFVars domVars[:i] do -- TODO probably not necessary to do `withTypedFVars` here (can get domain from (← read).fvarTypes, and the sorts shouldn't contain free variables)
                                     pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr)])
                                   pure (ret, s3)
                                 pure ret
-    | .letE name typ val bod _ =>
+    | .letE name typ val bod _ => -- TODO recursive lets (with references in type)?
       withLetDecl name typ val fun x => do
         let bod := bod.instantiate1 x
 
@@ -68,11 +68,19 @@ mutual
           let name := fvar.fvarId!.name
           let some dom ← do pure $ (← read).fvarTypes.find? name | tthrow s!"could not find type of free variable"
           pure $ .pi dom acc
+        let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
 
         let val ← fromExpr val
         let letName ← nextLetName
         let fvars :=  (← read).fvars.toList
-        let const := .definable letName type [.mk fvars.length (.appN (.const letName) (← fvars.mapM (fun fvar => fromExpr fvar))) val]
+        let numLevels := (← read).lvlParams.size
+        let numVars := numLevels + fvars.length
+        -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
+
+        let levels := numLevels.fold (init := []) fun i acc => [.var (i + fvars.length)] ++ acc
+        let lhs := (.appN (.const letName) (levels ++ (← fvars.mapM (fun fvar => fromExpr fvar))))
+
+        let const := .definable letName type [.mk numVars lhs val]
         modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
         withLet (x.fvarId!.name) $ fromExpr bod
     | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
@@ -82,12 +90,15 @@ mutual
                     | some i => pure $ .var ((← read).fvars.size - 1 - i)
                     | _ =>
                       match (← read).lvars.find? id.name with
-                      | some (nFvars, constName) =>
-                        List.range nFvars |>.foldlM (init := (.const constName))
+                      | some (nFvars, constName) => do
+                        let numLvls := (← read).lvlParams.size
+                        let letVarApp ← List.range numLvls |>.foldlM (init := (.const constName))
+                          fun app i => do pure $ .app app $ .var $ (← read).fvars.size + numLvls - 1 - i
+                        List.range nFvars |>.foldlM (init := letVarApp)
                           fun app i => do pure $ .app app $ .var $ (← read).fvars.size - 1 - i
                       | _ => tthrow s!"encountered unknown free variable {e}"
     | .mvar ..  => pure $ .fixme "MVAR.FIXME" -- FIXME
-    | .mdata .. => pure $ .fixme "MDATA.FIXME" -- FIXME
+    | .mdata _ e => fromExpr e
 
   partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
     pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr e)]
@@ -106,9 +117,9 @@ mutual
   withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← read).constName
     let type ← fromExprAsType cnst.type
-    let type := cnst.levelParams.foldr (init := type) fun _ curr => .pi (.const `lvl.Lvl) curr
+    let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
     match cnst with
-    | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name (.fixme "AXIOM.FIXME") -- FIXME
+    | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name type
     | .defnInfo     (val : Lean.DefinitionVal)
     | .thmInfo      (val : Lean.TheoremVal) => do
       if ← Lean.isProjectionFn val.name then
@@ -128,10 +139,10 @@ mutual
         pure $ .definable name type [.mk (numLevels + numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
       else
         let value ← fromExpr val.value
-        let value := cnst.levelParams.foldr (init := value) fun _ curr => .lam curr
+        let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr
         pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
-    | .quotInfo     (val : Lean.QuotVal) => pure $ .static name (.fixme "QUOT.FIXME") -- FIXME
+    | .quotInfo     (val : Lean.QuotVal) => pure $ .static name type -- FIXME rewrite rules for different kinds
     | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
     | .ctorInfo     (val : Lean.ConstructorVal) => do
       if Lean.isStructure env val.induct then
