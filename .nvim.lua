@@ -102,12 +102,20 @@ end
 
 local prev_onlys_file = vim.fn.stdpath("data") .. "/" .. "prev_onlys.json"
 local prev_onlys = vim.fn.filereadable(prev_onlys_file) ~= 0 and vim.fn.json_decode(vim.fn.readfile(prev_onlys_file)) or {}
+local last_template
+local last_params = {}
+
+local function run_template(name, params)
+  last_template = name
+  last_params = params or {}
+  overseer.run_template({name = name, params = params}, task_split)
+end
 
 local function run_only(only)
   prev_onlys[only] = os.time()
   local json = vim.fn.json_encode(prev_onlys)
   vim.fn.writefile({json}, prev_onlys_file)
-  overseer.run_template({name = "translate only", params = {only = only, file = curr_trans_file}}, task_split)
+  run_template("translate only", {only = only, file = curr_trans_file})
 end
 
 local function choose_trans(trans_file)
@@ -149,10 +157,9 @@ local transfile_picker = function(opts)
           local selection = action_state.get_selected_entry()
 
           actions.close(prompt_bufnr)
-          print(selection.value)
           choose_trans(selection.value)
-          if curr_task then
-            overseer.run_action(curr_task, "restart")
+          if last_template == "translate" or last_template == "translate only" then
+            run_template(last_template, vim.tbl_extend("keep", {file = curr_trans_file}, last_params))
           end
         end)
 
@@ -211,8 +218,8 @@ for name, template in pairs(templates) do
   overseer.register_template(template)
 end
 
-vim.keymap.set("n", "<leader>tt", function () overseer.run_template({name = "translate", params = {file = curr_trans_file}}, task_split) end)
-vim.keymap.set("n", "<leader>tc", function () overseer.run_template({name = "check"}, task_split) end)
+vim.keymap.set("n", "<leader>tt", function () run_template("translate", {file = curr_trans_file}) end)
+vim.keymap.set("n", "<leader>tc", function () run_template("check", {}) end)
 vim.keymap.set("n", "<leader>to", function () run_only(vim.fn.input("enter constant names (comma-separated, no whitespace): ")) end)
 vim.keymap.set("v", "<leader>to", function () run_only(region_to_text()) end)
 vim.keymap.set("n", "<leader>tO", function () only_picker():find() end)
