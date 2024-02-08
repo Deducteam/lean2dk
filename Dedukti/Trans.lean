@@ -45,7 +45,10 @@ mutual
         transNamedConst name
       -- dbg_trace s!"translating const {name} with levels: {lvls} --> {repr $ ← lvls.mapM fromLevel}"
       pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
-    | .app fnc arg => do pure $ .app (← fromExpr fnc) (← fromExpr arg)
+    | e@(.app (.lam _ _ _ _) _) => do
+      pure (← fromExpr $ ← Lean.Core.betaReduce e) -- immediately reduce beta-redexes, as unannotated lambdas are not allowed in Dedukti (FIXME can use full reduction once subsingleton elimination has been implemented)
+    | .app fnc arg => do
+      pure $ .app (← fromExpr fnc) (← fromExpr arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
                                 domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
                                   pure (.lam curr)
@@ -139,6 +142,7 @@ mutual
         pure $ .definable name type [.mk (numLevels + numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
       else
         let value ← fromExpr val.value
+        -- let value ← fromExpr $ ← reduceAll val.value -- FIXME use this version (mainly to shorten output code) once implemented subsingleton elimination (for the moment e.g. Unit.recOn is problematic)
         let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr
         pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME

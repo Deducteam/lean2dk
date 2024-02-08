@@ -28,10 +28,11 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
-  IO.println s!"\n>> Translating file: {fileName}\n"
+  IO.println s!"\n>> Translation file: {fileName}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
+  IO.println s!"\n>> Elaborating...\n"
   -- run elaborator on Lean file
   Lean.initSearchPath (← Lean.findSysroot)
   let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
@@ -40,8 +41,10 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
 
   let mut write := true
   if let some onlyConsts := onlyConsts? then
-    IO.println s!"\n>> Only translating constants: {onlyConsts}"
+    IO.println s!"\n>> Only translating constants: {onlyConsts}..."
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
+  else
+    IO.println s!"\n>> Translating entire file..."
 
   let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)
   -- translate elaborated Lean environment to Dedukti
