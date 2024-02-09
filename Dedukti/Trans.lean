@@ -36,6 +36,12 @@ def levelFromExpr (expr : Lean.Expr) : TransM Level := do
 def levelFromInferredType (e : Lean.Expr) : TransM Level := do
   levelFromExpr $ ← reduceAll $ ← inferType e
 
+def dupParams (origParams : Array Lean.Expr) : TransM (Array (Name × Lean.BinderInfo × (Array Lean.Expr → TransM Lean.Expr))) := 
+  origParams.foldlM (init := #[]) fun x param => do
+    let paramType ← inferType param
+    pure $ x.append #[(default, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)] -- FIXME do I need to generate unique names here? e.g. param.fvarId!.name ++ `New
+
+
 mutual
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
@@ -146,7 +152,25 @@ mutual
         let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr
         pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
-    | .quotInfo     (val : Lean.QuotVal) => pure $ .static name type -- FIXME rewrite rules for different kinds
+    | .quotInfo     (val : Lean.QuotVal) =>
+      match val.kind with
+        | .type    -- `Quot`
+        | .ctor    -- `Quot.mk`
+        | .ind =>  -- `Quot.ind`
+          pure $ .static name type
+        | .lift => -- `Quot.lift`
+          forallTelescope cnst.type fun domVars img => do
+            let lvls := cnst.levelParams.map (Lean.Level.param ·)
+            withLocalDecls (← dupParams domVars[:domVars.size - 1]) λ params => do
+              withLocalDecls (← dupParams domVars[:2]) λ instParams => do
+                withLocalDecl default default (← inferType domVars[0]!) λ instArg => do
+                  let ctorAppLean := Lean.mkAppN (.const `Quot.mk [lvls[0]!]) (instParams ++ [instArg])
+                  let lhsLean := Lean.mkAppN (.const name lvls) (params ++ [ctorAppLean])
+                  let fnArg := params[3]!
+                  let rhsLean := Lean.mkApp fnArg instArg
+                  let numVars := lvls.length + params.size + instParams.size + 1
+                  let (lhs, rhs) ← withTypedFVars (params ++ instParams ++ [instArg]) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+                  pure $ .definable name type [.mk numVars lhs rhs]
     | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
     | .ctorInfo     (val : Lean.ConstructorVal) => do
       if Lean.isStructure env val.induct then
@@ -202,10 +226,6 @@ mutual
 
           -- let numCtorLvls := ctor.levelParams.length
           -- let ctorLvlOffset := cnst.levelParams.length - ctor.levelParams.length-- if large-eliminating, first param is output sort
-
-          let dupParams (origParams : Array Lean.Expr) := origParams.foldlM (init := #[]) fun x param => do
-            let paramType ← inferType param
-            pure $ x.append #[(default, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)] -- FIXME do I need to generate unique names here? e.g. param.fvarId!.name ++ `New
 
           withLocalDecls (← dupParams idxArgsOrig) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
             withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- FIXME better way than double-nesting?
