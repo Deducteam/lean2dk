@@ -51,10 +51,12 @@ structure PrintCtx where
   env : Env
   printDeps := true
   lvl : Nat := 0
+  pendingType := false
   deriving Inhabited
   
 structure PrintState where
   printedConsts : Std.RBMap Name String compare := default
+  rules         : List Rule := []
   out           : List String := []
   deriving Inhabited
 
@@ -65,6 +67,9 @@ def withResetPrintMLevel : PrintM α → PrintM α :=
 
 def withPrintDeps (printDeps : Bool) : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with printDeps }
+
+def withPendingType : PrintM α → PrintM α :=
+  withReader fun ctx => { ctx with pendingType := true }
 
 def withNewPrintMLevel : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with
@@ -154,10 +159,14 @@ mutual
         -- dbg_trace s!"done printing static constant: {name}"
       | .definable (name : Name) (type : Expr) (rules : List Rule) => do
         -- dbg_trace s!"printing definable constant: {name}"
-        let declString := s!"def {name} : {← type.print}."
-        modify fun s => { s with out := s.out ++ [declString]}
-        let rulesString := "\n".intercalate (← rules.mapM (·.print))
-        modify fun s => { s with out := s.out ++ [rulesString], printedConsts := s.printedConsts.insert const.name s!"{declString}\n{rulesString}"}
+        let declString := s!"def {name} : {← withPendingType type.print}."
+        modify fun s => { s with out := s.out ++ [declString], rules := s.rules ++ rules}
+
+        if not (← read).pendingType then
+          let allRules := (← get).rules
+          modify fun s => { s with rules := []}
+          let rulesString := "\n".intercalate (← allRules.mapM fun rule => do rule.print)
+          modify fun s => { s with out := s.out ++ [rulesString], printedConsts := s.printedConsts.insert const.name s!"{declString}\n{rulesString}"}
         -- dbg_trace s!"done printing definable constant: {name}"
 end
     
