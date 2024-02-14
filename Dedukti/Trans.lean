@@ -93,7 +93,7 @@ mutual
         modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
         withLet (x.fvarId!.name) $ fromExpr bod
     | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
-    | .proj _ idx exp => pure $ .fixme "PROJ.FIXME" -- FIXME
+    | e@(.proj _ _ _) => tthrow s!"encountered unexpected low-level projection application: {e}"
     | e@(.fvar id) => do 
                     match (← read).fvars.indexOf? e with
                     | some i => pure $ .var ((← read).fvars.size - 1 - i)
@@ -128,10 +128,12 @@ mutual
     let type ← fromExprAsType cnst.type
     let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
     match cnst with
-    | .axiomInfo    (val : Lean.AxiomVal) => pure $ .static name type
+    | .axiomInfo    (_ : Lean.AxiomVal) => pure $ .static name type
     | .defnInfo     (val : Lean.DefinitionVal)
     | .thmInfo      (val : Lean.TheoremVal) => do
       if ← Lean.isProjectionFn val.name then
+        -- make projection rule
+        -- FIXME refactor to translate from constructed Lean Exprs for lhs/rhs
         -- dbg_trace s!"projection function detected: {val.name}"
         let some projInfo ← Lean.getProjectionFnInfo? val.name | tthrow s!"impossible case"
         let numFields ← match env.find? projInfo.ctorName with
@@ -139,8 +141,10 @@ mutual
           | _ => tthrow s!"impossible case"
         let numParams := projInfo.numParams
         let numLevels := cnst.levelParams.length -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
-        let projAppPartial := (numLevels + numParams).foldRev (init := .const name) fun i app => .app app $ .var (i + numFields + numParams)
-        let ctorApp := numLevels.foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ .var (i + numFields + numParams + numParams)
+        -- maxS required for e.g. Subtype.property projection rewrite rule
+        let projAppPartial := numLevels.foldRev (init := .const name) fun i app => .app app $ (.app (.const `normalize.maxS) (.var (i + numFields + (numParams * 2))))
+        let projAppPartial := numParams.foldRev (init := projAppPartial) fun i app => .app app $ (.var (i + numFields + numParams))
+        let ctorApp := numLevels.foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ (.app (.const `normalize.maxS) (.var (i + numFields + numParams + numParams)))
         let ctorApp := (numParams + numFields).foldRev (init := ctorApp) fun i app => .app app $ .var i
         if (← read).transDeps then
           transNamedConst projInfo.ctorName
@@ -151,7 +155,7 @@ mutual
         -- let value ← fromExpr $ ← reduceAll val.value -- FIXME use this version (mainly to shorten output code) once implemented subsingleton elimination (for the moment e.g. Unit.recOn is problematic)
         let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr
         pure $ .definable name type [.mk 0 (.const name) value]
-    | .opaqueInfo   (val : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
+    | .opaqueInfo   (_ : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) =>
       match val.kind with
         | .type    -- `Quot`
@@ -159,7 +163,7 @@ mutual
         | .ind =>  -- `Quot.ind`
           pure $ .static name type
         | .lift => -- `Quot.lift`
-          forallTelescope cnst.type fun domVars img => do
+          forallTelescope cnst.type fun domVars _ => do
             let lvls := cnst.levelParams.map (Lean.Level.param ·)
             withLocalDecls (← dupParams domVars[:domVars.size - 1]) λ params => do
               withLocalDecls (← dupParams domVars[:2]) λ instParams => do
@@ -171,11 +175,11 @@ mutual
                   let numVars := lvls.length + params.size + instParams.size + 1
                   let (lhs, rhs) ← withTypedFVars (params ++ instParams ++ [instArg]) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
                   pure $ .definable name type [.mk numVars lhs rhs]
-    | .inductInfo   (val : Lean.InductiveVal) => pure $ .static name type
+    | .inductInfo   (_ : Lean.InductiveVal) => pure $ .static name type
     | .ctorInfo     (val : Lean.ConstructorVal) => do
       if Lean.isStructure env val.induct then
         -- dbg_trace s!"found struct: {val.induct} with ctor: {name}"
-        let ctor := Lean.getStructureCtor env val.induct
+        -- let ctor := Lean.getStructureCtor env val.induct
         let some info := Lean.getStructureInfo? env val.induct | tthrow "impossible case"
 
         let projFns ← info.fieldNames.mapM fun i =>
@@ -189,15 +193,20 @@ mutual
 
         let numLevels := val.levelParams.length
         let numParams := val.numParams -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
-        let numVars := numLevels + numParams + numParams + 1 -- TODO don't have to worry about indices, right?
+        let numVars := numLevels + numParams  + 1 -- TODO don't have to worry about indices, right?
+
+        -- NOTE: Here, we must duplicate parameters to preserve confluence.
+        -- Otherwise, for example, the following term could reduce in two possible ways (where P1 Bool.true == P2 Bool.true):
+        -- (@Subtype.mk Bool P2 (@Subtype.val Bool P1 (@Subtype.mk Bool P1 Bool.true p1)) (@Subtype.property Bool P1 (@Subtype.mk Bool P1 Bool.true p1)))
 
         -- make eta rule
-        let ctorWithUnivs := numLevels.foldRev (init := .const name) fun i acc => .app acc (.var (i + numParams + numParams + 1))
-        let ctorApp := val.numParams.foldRev (init := ctorWithUnivs) fun i acc => .app acc (.var (i + numParams + 1))
+        -- FIXME refactor to translate from constructed Lean Exprs for lhs/rhs
+        let ctorWithUnivs := numLevels.foldRev (init := .const name) fun i acc => .app acc (.var (i + numParams + 1))
+        let ctorApp := val.numParams.foldRev (init := ctorWithUnivs) fun i acc => .app acc (.var (i + 1))
 
         let lhs := projFns.foldl (init := ctorApp)
           fun acc fn =>
-            let prjApp := numLevels.foldRev (init := fn) fun i acc => .app acc (.var (i + numParams + numParams + 1))
+            let prjApp := numLevels.foldRev (init := fn) fun i acc => .app acc (.var (i + numParams + 1))
             let prjApp := numParams.foldRev (init := prjApp) fun i acc => .app acc (.var (i + 1))
             .app acc (.app prjApp (.var 0))
 
@@ -220,8 +229,8 @@ mutual
           let outArgs := outType.getAppArgs
           let idxArgsOrig := if outArgs.size > 1 then outArgs[:outArgs.size - 1].toArray else #[]
           let ctorAppOrig := outArgs[outArgs.size - 1]!
-          let idxVars := idxArgsOrig.foldl (init := #[]) fun acc arg =>
-            if arg.isFVar then acc ++ #[arg] else acc
+          -- let idxVars := idxArgsOrig.foldl (init := #[]) fun acc arg =>
+          --   if arg.isFVar then acc ++ #[arg] else acc
 
 
           -- let numCtorLvls := ctor.levelParams.length
