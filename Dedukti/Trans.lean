@@ -84,10 +84,11 @@ mutual
         let fvars :=  (← read).fvars.toList
         let numLevels := (← read).lvlParams.size
         let numVars := numLevels + fvars.length
-        -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
 
         let levels := numLevels.fold (init := []) fun i acc => [.var (i + fvars.length)] ++ acc
         let lhs := (.appN (.const letName) (levels ++ (← fvars.mapM (fun fvar => fromExpr fvar))))
+
+        -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
 
         let const := .definable letName type [.mk numVars lhs val]
         modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
