@@ -27,3 +27,5 @@ def p1 : P1 .true := .intro
 def p2 : P2 .true := .intro
 
 #reduce (@Subtype.mk Bool P2 (@Subtype.val Bool P1 (@Subtype.mk Bool P1 Bool.true p1)) (@Subtype.property Bool P1 (@Subtype.mk Bool P1 Bool.true p1)))
+#check Subtype.val
+#check Subtype.property

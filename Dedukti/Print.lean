@@ -87,7 +87,7 @@ def withResetPrintMLevel : PrintM α → PrintM α :=
   Registers `refPendingTypeConst` as a pending type referenced by the rules of `ruleConst`.
 -/
 def addRefPendingType (ruleConst refPendingTypeConst : Name) : PrintM Unit := do
-  -- dbg_trace s!"registering {ruleConst} as depending on {refPendingTypeConst}"
+  dbg_trace s!"registering {ruleConst} as depending on {refPendingTypeConst}"
   let refSet := match (← get).refPendingTypes.find? ruleConst with
     | .none => default
     | .some s => s

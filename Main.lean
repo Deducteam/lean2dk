@@ -4,6 +4,18 @@ import Cli
 
 open Dedukti
 
+abbrev RED        := "\x1b[31m"
+abbrev YELLOW     := "\x1b[1;33m"
+abbrev BLUE       := "\x1b[0;34m"
+abbrev LIGHT_BLUE := "\x1b[1;34m"
+abbrev LIGHT_GRAY := "\x1b[1;36m"
+abbrev GREEN      := "\x1b[0;32m"
+abbrev PURPLE     := "\x1b[0;35m"
+abbrev NOCOLOR    := "\x1b[0m"
+
+def eprintColor (color s : String) := IO.eprintln s!"{color}{s}{NOCOLOR}"
+def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
+
 open Cli
 
 def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
@@ -28,11 +40,11 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
-  IO.println s!"\n>> Translation file: {fileName}"
+  IO.println s!"\n{BLUE}>> Translation file: {YELLOW}{fileName}{NOCOLOR}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
-  IO.println s!"\n>> Elaborating...\n"
+  IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
   -- run elaborator on Lean file
   Lean.initSearchPath (← Lean.findSysroot)
   let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
@@ -40,11 +52,12 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     throw $ IO.userError $ "elab failed"
 
   let mut write := true
+  IO.println s!"{NOCOLOR}"
   if let some onlyConsts := onlyConsts? then
-    IO.println s!"\n>> Only translating constants: {onlyConsts}..."
+    printColor BLUE s!">> Only translating constants: {onlyConsts}..."
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
   else
-    IO.println s!"\n>> Translating entire file..."
+    printColor BLUE s!">> Translating entire file..."
 
   let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)
   -- translate elaborated Lean environment to Dedukti
@@ -53,11 +66,13 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
 
   -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
+  IO.print s!"{PURPLE}"
   if write then
     printDkEnv dkEnv none
 
   if p.hasFlag "print" then
     printDkEnv dkEnv onlyConsts?
+  IO.print s!"{NOCOLOR}"
 
   return 0
 

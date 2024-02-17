@@ -29,6 +29,13 @@ def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
     }
   else pure {exitCode := 0, stdout := "", stderr := ""}
 
+abbrev RED        := "\x1b[31m"
+abbrev BLUE       := "\x1b[0;34m"
+abbrev LIGHT_BLUE := "\x1b[1;34m"
+abbrev LIGHT_GRAY := "\x1b[1;36m"
+abbrev GREEN      := "\x1b[0;32m"
+abbrev NOCOLOR    := "\x1b[0m"
+
 def printCmd (cmd : String) : ScriptM PUnit := do
   let {stderr, stdout, ..} ← runCmd' cmd
   IO.eprint stderr
@@ -44,36 +51,41 @@ def argsString (args : List String) :=
   s!"{args.foldl (init := "") fun acc arg => acc ++ " " ++ arg}"
 
 script trans_only (args) do
-  IO.println "running translation only..."
+  IO.println "{BLUE}running translation only..."
   let {stderr, stdout, ..} ← runCmd' s!"lake exe lean2dk{argsString args}"
   IO.println stderr
   IO.println stdout
   return 1
 
+def eprintColor (color s : String) := IO.eprintln s!"{color}{s}{NOCOLOR}"
+def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
+
 script trans (args) do
-  IO.println "running translation + check..."
+  printColor BLUE "running translation + check..."
   match ← runCmd s!"lake exe lean2dk{argsString args}" with
-  | .error e => IO.eprintln e; return 1
+  | .error e => eprintColor LIGHT_GRAY e; return 1
   | .ok stdout =>
-    IO.println stdout
+    printColor NOCOLOR stdout
     -- printCmd "echo ---------------- out.dk"
     -- printCmd "cat dk/out.dk"
     -- printCmd "echo ----------------"
     match ← runCmd "make check -sC dk" with
-    | .error e => IO.eprintln e; return 1
-    | .ok _ => IO.println "\ntests passed!"; return 0
+    | .error e => eprintColor LIGHT_GRAY e; return 1
+    | .ok _ => printColor GREEN "\ntests passed!"; return 0
 
 script test do
   IO.println "running tests..."
   match ← runCmd "make test -sC dk" with
-  | .error e => IO.eprintln e; return 1
-  | .ok out => IO.println out; IO.println "tests passed!"; return 0
+  | .error e => eprintColor LIGHT_GRAY e; return 1
+  | .ok out => printColor LIGHT_GRAY out; printColor GREEN "tests passed!"; return 0
 
 script check do
-  IO.println "running check..."
+  printColor BLUE s!"running check..."
   match ← runCmd "make check -sC dk" with
-  | .error e => IO.eprintln e; return 1
-  | .ok o => IO.println (o ++ "\ntests passed!"); return 0
+  | .error e => eprintColor LIGHT_GRAY e; return 1
+  | .ok o =>
+    printColor LIGHT_GRAY o
+    printColor GREEN "tests passed!"; return 0
 
 partial def getFilePaths (fp : FilePath) (ext : String) (acc : Array FilePath := #[]) :
     IO $ Array FilePath := do
