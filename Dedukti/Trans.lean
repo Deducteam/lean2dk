@@ -133,24 +133,24 @@ mutual
     | .defnInfo     (val : Lean.DefinitionVal)
     | .thmInfo      (val : Lean.TheoremVal) => do
       if ← Lean.isProjectionFn val.name then
-        -- make projection rule
-        -- FIXME refactor to translate from constructed Lean Exprs for lhs/rhs
         -- dbg_trace s!"projection function detected: {val.name}"
+        -- make projection rule
         let some projInfo ← Lean.getProjectionFnInfo? val.name | tthrow s!"impossible case"
-        let numFields ← match env.find? projInfo.ctorName with
-          | some (.ctorInfo { numFields := n, .. }) => pure n
+        let ctor ← match env.find? projInfo.ctorName with
+          | some c => pure c
           | _ => tthrow s!"impossible case"
-        let numParams := projInfo.numParams
-        let numLevels := cnst.levelParams.length -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
-        -- maxS required for e.g. Subtype.property projection rewrite rule
-        let projAppPartial := numLevels.foldRev (init := .const name) fun i app => .app app $ (.app (.const `normalize.maxS) (.var (i + numFields + (numParams * 2))))
-        let projAppPartial := numParams.foldRev (init := projAppPartial) fun i app => .app app $ (.var (i + numFields + numParams))
-        let ctorApp := numLevels.foldRev (init := .const (fixLeanName projInfo.ctorName)) fun i app => .app app $ (.app (.const `normalize.maxS) (.var (i + numFields + numParams + numParams)))
-        let ctorApp := (numParams + numFields).foldRev (init := ctorApp) fun i app => .app app $ .var i
-        if (← read).transDeps then
-          transNamedConst projInfo.ctorName
+        forallTelescope cnst.type fun params _ => do
+          forallTelescope ctor.type fun ctorParams _ => do
+            let params := params[:projInfo.numParams] -- FIXME how to instead restrict telescope above?
+            let lvls := cnst.levelParams.map (Lean.Level.param ·)
+            let ctorAppLean := Lean.mkAppN (.const ctor.name lvls) (ctorParams)
+            let lhsLean := Lean.mkAppN (.const name lvls) (params ++ #[ctorAppLean])
+            let rhsLean := ctorParams[params.size + projInfo.i]!
 
-        pure $ .definable name type [.mk (numLevels + numParams * 2 + numFields) (.app projAppPartial ctorApp) $ .var (numFields - projInfo.i - 1)]
+            -- maxS required for e.g. Subtype.property projection rewrite rule
+            let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ ctorParams) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+
+            pure $ .definable name type [.mk (lvls.length + params.size + ctorParams.size) lhs rhs]
       else
         let value ← fromExpr val.value
         -- let value ← fromExpr $ ← reduceAll val.value -- FIXME use this version (mainly to shorten output code) once implemented subsingleton elimination (for the moment e.g. Unit.recOn is problematic)
@@ -179,42 +179,22 @@ mutual
     | .inductInfo   (_ : Lean.InductiveVal) => pure $ .static name type
     | .ctorInfo     (val : Lean.ConstructorVal) => do
       if Lean.isStructure env val.induct then
-        -- dbg_trace s!"found struct: {val.induct} with ctor: {name}"
-        -- let ctor := Lean.getStructureCtor env val.induct
-        let some info := Lean.getStructureInfo? env val.induct | tthrow "impossible case"
+        forallTelescope cnst.type fun params outType => do
+          withLocalDecl default default outType fun outVar => do
+            let params := params[:params.size - val.numFields] -- will replace fields with projection applications
+            let lvls := cnst.levelParams.map (Lean.Level.param ·)
+            let some info := Lean.getStructureInfo? env val.induct | tthrow "impossible case"
+            let projApps ← info.fieldNames.mapM fun i =>
+              match Lean.getProjFnForField? env val.induct i with
+              | .some projFn => do
+                pure $ Lean.mkAppN (.const projFn lvls) (params ++ #[outVar])
+              | .none => tthrow "impossible case"
 
-        let projFns ← info.fieldNames.mapM fun i =>
-          match Lean.getProjFnForField? env val.induct i with
-          | .some projFn => do
-            if (← read).transDeps then
-              transNamedConst projFn
-
-            pure $ .const $ fixLeanName projFn
-          | .none => tthrow "impossible case"
-
-        let numLevels := val.levelParams.length
-        let numParams := val.numParams -- FIXME non-left-linear universes (needed for now for Dedukti typechecker)
-        let numVars := numLevels + numParams  + 1 -- TODO don't have to worry about indices, right?
-
-        -- NOTE: Here, we must duplicate parameters to preserve confluence.
-        -- Otherwise, for example, the following term could reduce in two possible ways (where P1 Bool.true == P2 Bool.true):
-        -- (@Subtype.mk Bool P2 (@Subtype.val Bool P1 (@Subtype.mk Bool P1 Bool.true p1)) (@Subtype.property Bool P1 (@Subtype.mk Bool P1 Bool.true p1)))
-
-        -- make eta rule
-        -- FIXME refactor to translate from constructed Lean Exprs for lhs/rhs
-        let ctorWithUnivs := numLevels.foldRev (init := .const name) fun i acc => .app acc (.var (i + numParams + 1))
-        let ctorApp := val.numParams.foldRev (init := ctorWithUnivs) fun i acc => .app acc (.var (i + 1))
-
-        let lhs := projFns.foldl (init := ctorApp)
-          fun acc fn =>
-            let prjApp := numLevels.foldRev (init := fn) fun i acc => .app acc (.var (i + numParams + 1))
-            let prjApp := numParams.foldRev (init := prjApp) fun i acc => .app acc (.var (i + 1))
-            .app acc (.app prjApp (.var 0))
-
-        let rhs := .var 0
-
-        -- dbg_trace s!"found struct: {ctor.name}"
-        pure $ .definable name type [.mk numVars lhs rhs] -- TODO make injective
+            let lhsLean := Lean.mkAppN (.const name lvls) (params ++ projApps)
+            let rhsLean := outVar
+            let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ #[outVar]) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+            -- dbg_trace s!"found struct: {ctor.name}"
+            pure $ .definable name type [.mk (1 + lvls.length + params.size) lhs rhs] -- TODO make injective
       else
         pure $ .static name type
     | .recInfo      (val : Lean.RecursorVal) => do
