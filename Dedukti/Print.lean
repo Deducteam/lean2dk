@@ -86,8 +86,9 @@ def withResetPrintMLevel : PrintM α → PrintM α :=
 /--
   Registers `refPendingTypeConst` as a pending type referenced by the rules of `ruleConst`.
 -/
-def addRefPendingType (ruleConst refPendingTypeConst : Name) : PrintM Unit := do
-  dbg_trace s!"registering {ruleConst} as depending on {refPendingTypeConst}"
+def addRefPendingTypeInRule (ruleConst refPendingTypeConst : Name) : PrintM Unit := do
+  if ruleConst != refPendingTypeConst then
+    dbg_trace s!"registering {ruleConst} as depending on {refPendingTypeConst}"
   let refSet := match (← get).refPendingTypes.find? ruleConst with
     | .none => default
     | .some s => s
@@ -163,14 +164,14 @@ def dkExprNeedsTypeParens : Expr → Bool
   | .kind => false
 
 mutual
-  partial def Rule.print (constName : Name) (rule : Rule) : PrintM String := do
+  partial def Rule.print (rule : Rule) : PrintM String := do
     match rule with
     | .mk (vars : Nat) (lhs : Expr) (rhs : Expr) =>
       let mut varsStrings := []
       for i in [0:vars] do
         varsStrings := varsStrings ++ [s!"x{i}"]
       let varsString := ", ".intercalate varsStrings
-      withPrintingRule constName $ withSetPrintMLevel vars do
+      withSetPrintMLevel vars do
         pure s!"[{varsString}] {← lhs.print} --> {← rhs.print}."
 
   partial def Expr.print (expr : Expr) : PrintM String := do
@@ -180,7 +181,12 @@ mutual
       if (← read).pendingTypes.contains name then
         if let some ruleConst := (← read).printingRule then -- FIXME possible to combine with above conditional?
           -- if we encounter a pending type while printing a rule, register this rule as pending on the printing of this constant's type
-          addRefPendingType ruleConst name
+          addRefPendingTypeInRule ruleConst name
+      else if (← get).pendingRules.contains name then
+        pure default
+        -- if let some typeConst := (← read).printingType then
+        --   addRefTypeInType ruleConst name
+        --   sorry
       else
         if (← read).printDeps && !(preludeConstNames.contains name) && !((← get).printedConsts.contains name) then
           -- print this constant first to make sure the DAG of constant dependencies
@@ -207,8 +213,6 @@ mutual
     if ((← get).printedConsts.contains const.name) then return
 
     -- dbg_trace s!"printing: {const.name}"
-    -- immediately mark this constant as printed to avoid infinite loops
-    modify fun s => { s with printedConsts := s.printedConsts.insert const.name ""}
 
     match const with
       | .static (name : Name) (type : Expr) => do
@@ -220,14 +224,17 @@ mutual
         -- dbg_trace s!"printing: {name}"
         let declString := s!"def {name} : {← withPendingType name type.print}."
         -- dbg_trace s!"done printing type: {name}"
-        modify fun s => { s with out := s.out ++ [declString]}
-        let pendingRules ← withPrintingRule name $ rules.mapM (·.print name)
-        modify fun s => { s with pendingRules := s.pendingRules.insert name $ pendingRules}
-        -- dbg_trace s!"done printing rules: {name}"
+        modify fun s => { s with out := s.out ++ [declString], pendingRules := s.pendingRules.insert name [] }
+        addRefPendingTypeInRule name name
+
+        withPrintingRule name do 
+          for rule in rules do
+            let ruleString ← rule.print
+            modify fun s => { s with pendingRules := s.pendingRules.insert name $ s.pendingRules.find! name ++ [ruleString]}
+
+        let origRulesString := "\n".intercalate ((← get).pendingRules.find! name)
 
         let rulesToPrint ← removeRefPendingType name
-
-        let origRulesString := "\n".intercalate pendingRules
 
         modify fun s => { s with out := s.out ++ rulesToPrint, printedConsts := s.printedConsts.insert const.name s!"{declString}\n{origRulesString}"}
         -- dbg_trace s!"done printing: {name}"
