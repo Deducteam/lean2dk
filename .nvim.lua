@@ -78,7 +78,7 @@ end
 
 local curr_task, curr_task_win
 
-local function task_split (task)
+local abort_curr_task = function ()
   if curr_task then
     if vim.api.nvim_win_is_valid(curr_task_win) then
       vim.api.nvim_win_close(curr_task_win, true)
@@ -86,6 +86,10 @@ local function task_split (task)
     overseer.run_action(curr_task, "unwatch")
     curr_task:dispose()
   end
+end
+
+local function task_split (task)
+  abort_curr_task()
 
   local main_win = vim.api.nvim_get_current_win()
   overseer.run_action(task, "open vsplit")
@@ -109,6 +113,11 @@ local function run_template(name, params)
   last_template = name
   last_params = params or {}
   overseer.run_template({name = name, params = params}, task_split)
+end
+
+local function resume_prev_template()
+  if not last_template then print("no previous template run, aborting...") return end
+  run_template(last_template, last_params)
 end
 
 local function run_only(only)
@@ -224,3 +233,5 @@ vim.keymap.set("n", "<leader>to", function () run_only(vim.fn.input("enter const
 vim.keymap.set("v", "<leader>to", function () run_only(region_to_text()) end)
 vim.keymap.set("n", "<leader>tO", function () only_picker():find() end)
 vim.keymap.set("n", "<leader>tf", function () transfile_picker():find() end)
+vim.keymap.set("n", "<leader>tq", function () abort_curr_task() end)
+vim.keymap.set("n", "<leader>t<Tab>", function () resume_prev_template() end)
