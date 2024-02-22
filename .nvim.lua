@@ -84,6 +84,7 @@ local abort_curr_task = function ()
       vim.api.nvim_win_close(curr_task_win, true)
     end
     overseer.run_action(curr_task, "unwatch")
+    curr_task:stop()
     curr_task:dispose()
   end
 end
@@ -121,10 +122,60 @@ local function resume_prev_template()
 end
 
 local function run_only(only)
-  prev_onlys[only] = os.time()
-  local json = vim.fn.json_encode(prev_onlys)
-  vim.fn.writefile({json}, prev_onlys_file)
-  run_template("translate only", {only = only, file = curr_trans_file})
+  local only_info = prev_onlys[only] or {}
+  local old_format = type(only_info) == "number"
+
+  local function run()
+    only_info.time = os.time()
+
+    prev_onlys[only] = only_info
+
+    local json = vim.fn.json_encode(prev_onlys)
+    vim.fn.writefile({json}, prev_onlys_file)
+    run_template("translate only", {only = only, file = only_info.file})
+  end
+
+  if old_format then -- back-compat to update only_info with filename
+    only_info = {time = only_info}
+
+    local results = {}
+
+    for _, file in ipairs(vim.fn.split(vim.fn.glob("fixtures/**/*.lean"), "\n")) do
+      file = vim.loop.fs_realpath(file)
+      table.insert(results, file)
+    end
+
+    pickers
+      .new({}, {
+        prompt_title = string.format("Choose file to translate", vim.fn.fnamemodify(curr_trans_file, ":t")),
+        finder = finders.new_table {
+          results = results,
+          entry_maker = make_entry.gen_from_file(),
+        },
+        sorter = sorters.Sorter:new {
+          discard = true,
+
+          scoring_function = function(_, _, line)
+            return prev_trans[line] and -prev_trans[line] or 0
+          end,
+        },
+        previewer = conf.grep_previewer(),
+        attach_mappings = function(prompt_bufnr)
+          actions.select_default:replace(function()
+            local selection = action_state.get_selected_entry()
+
+            only_info.file = selection.value
+            actions.close(prompt_bufnr)
+
+            run()
+          end)
+
+          return true
+        end,
+      }):find()
+  else
+    run()
+  end
 end
 
 local function choose_trans(trans_file)
@@ -178,48 +229,53 @@ local transfile_picker = function(opts)
 end
 
 local only_picker = function(opts) return pickers
-    .new(opts, {
-      prompt_title = "previous --only args",
-      finder = finders.new_table {
-        results = (function()
-          local onlys = {}
-          for only, _ in pairs(prev_onlys) do
-            table.insert(onlys, only)
-          end
-          return onlys
-        end)(),
-
-        entry_maker = function(entry)
-          return make_entry.set_default_entry_mt({
-            value = entry,
-            ordinal = entry,
-            display = entry,
-          })
+  .new(opts, {
+    prompt_title = "previous --only args",
+    finder = finders.new_table {
+      results = (function()
+        local onlys = {}
+        for only, only_info in pairs(prev_onlys) do
+          local file = type(only_info) == "table" and vim.fn.fnamemodify(only_info.file, ":~:.") or "(UNSET)"
+          local info = {const = only, text = file .. " --> " .. only}
+          table.insert(onlys, info)
         end
-      },
-      sorter = sorters.Sorter:new {
-        discard = true,
+        return onlys
+      end)(),
 
-        scoring_function = function(_, prompt, line)
-          return -prev_onlys[line]
-        end,
-      },
-      attach_mappings = function(prompt_bufnr)
-        actions.select_default:replace(function()
-          local selection = action_state.get_selected_entry()
-          if selection == nil then
-            utils.__warn_no_selection "--only args"
-            return
-          end
+      entry_maker = function(entry)
+        return make_entry.set_default_entry_mt({
+          value = entry.const,
+          ordinal = entry.const,
+          display = entry.text,
+        })
+      end
+    },
+    sorter = sorters.Sorter:new {
+      discard = true,
 
-          actions.close(prompt_bufnr)
-          local val = selection.value
-          run_only(val)
-        end)
-
-        return true
+      scoring_function = function(_, _, entry)
+        if type(prev_onlys[entry]) == "number" then
+          return -prev_onlys[entry]
+        end
+        return -prev_onlys[entry].time
       end,
-    })
+    },
+    attach_mappings = function(prompt_bufnr)
+      actions.select_default:replace(function()
+        local selection = action_state.get_selected_entry()
+        if selection == nil then
+          utils.__warn_no_selection "--only args"
+          return
+        end
+
+        actions.close(prompt_bufnr)
+        local val = selection.value
+        run_only(val)
+      end)
+
+      return true
+    end,
+  })
 end
 
 for name, template in pairs(templates) do
