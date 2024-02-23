@@ -9,11 +9,12 @@ local utils = require "telescope.utils"
 
 local conf = require("telescope.config").values
 
-local source_files = {}
-vim.list_extend(source_files, vim.split(vim.fn.glob("dk/*.dk"), "\n"))
-vim.list_extend(source_files, vim.split(vim.fn.glob("*.lean"), "\n"))
-vim.list_extend(source_files, vim.split(vim.fn.glob("Dedukti/**/*.lean"), "\n"))
-vim.list_extend(source_files, vim.split(vim.fn.glob("fixtures/**/*.lean"), "\n"))
+local dk_files = {}
+local lean_files = {}
+vim.list_extend(dk_files, vim.split(vim.fn.glob("dk/**/*.dk"), "\n"))
+vim.list_extend(lean_files, vim.split(vim.fn.glob("*.lean"), "\n"))
+vim.list_extend(lean_files, vim.split(vim.fn.glob("Dedukti/**/*.lean"), "\n"))
+vim.list_extend(lean_files, vim.split(vim.fn.glob("fixtures/**/*.lean"), "\n"))
 
 local prev_trans_file = vim.fn.stdpath("data") .. "/" .. "prev_trans.json"
 local prev_trans = vim.fn.filereadable(prev_trans_file) ~= 0 and vim.fn.json_decode(vim.fn.readfile(prev_trans_file)) or {}
@@ -35,7 +36,7 @@ local templates = {
         cmd = { "lake" },
         args = { "run", "trans", params.file },
         components = {
-          { "restart_on_save", paths = source_files},
+          { "restart_on_save", paths = lean_files}, -- TODO "intelligently" switch task to check if a dk file was modified
           "default",
         },
       }
@@ -47,7 +48,7 @@ local templates = {
         cmd = { "lake" },
         args = { "run", "trans", params.file, "--print", "--write", "--only", params.only},
         components = {
-          { "restart_on_save", paths = source_files},
+          { "restart_on_save", paths = lean_files},
           "default",
         },
       }
@@ -59,7 +60,7 @@ local templates = {
         cmd = { "lake" },
         args = { "run", "check"},
         components = {
-          { "restart_on_save", paths = source_files},
+          { "restart_on_save", paths = lean_files}, -- TODO "intelligently" switch task to previous translation task if a lean file was modified
           "default",
         },
       }
@@ -122,8 +123,9 @@ local function resume_prev_template()
 end
 
 local function run_only(only)
+  if #only == 0 then print"Error: no constant specified" return end
   local only_info = prev_onlys[only] or {}
-  local old_format = type(only_info) == "number"
+  local select_file = type(only_info) == "number" or not curr_trans_file
 
   local function run()
     only_info.time = os.time()
@@ -132,10 +134,12 @@ local function run_only(only)
 
     local json = vim.fn.json_encode(prev_onlys)
     vim.fn.writefile({json}, prev_onlys_file)
+
+    curr_trans_file = only_info.file
     run_template("translate only", {only = only, file = only_info.file})
   end
 
-  if old_format then -- back-compat to update only_info with filename
+  if select_file then -- back-compat to update only_info with filename
     only_info = {time = only_info}
 
     local results = {}
@@ -174,6 +178,7 @@ local function run_only(only)
         end,
       }):find()
   else
+    only_info.file = only_info.file or curr_trans_file
     run()
   end
 end
