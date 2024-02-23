@@ -9,6 +9,8 @@ structure Context where
   constName  : Name := default
   /-- Don't perform universe level normalization on variables; used in e.g. recursor rewrite rules. -/
   noLVarNormalize : Bool := false
+  /-- Erase proofs (to account for proof irrelevance). -/
+  eraseProofs : Bool := false
   /-- Also translate any constant dependencies when they are encountered. -/
   transDeps : Bool := false
   /-- Counter for lets encountered in a constant,
@@ -40,10 +42,13 @@ def tthrow (msg : String) : TransM α := do -- FIXME is there a way to make this
 throw $ .error default s!"{msg}\nWhile translating: {(← read).constName}"
 
 def withResetCtx : TransM α → TransM α :=
-  withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false }
+  withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false, eraseProofs := false }
 
 def withNoLVarNormalize : TransM α → TransM α :=
   withReader fun ctx => { ctx with noLVarNormalize := true }
+
+def withEraseProofs : TransM α → TransM α :=
+  withReader fun ctx => { ctx with eraseProofs := true }
 
 def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }

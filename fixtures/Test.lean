@@ -149,6 +149,27 @@ noncomputable def treeSum (t : Tree Nat) : Nat :=
 
 theorem treeSumTest : Eq (treeSum (.mk one (.cons (.mk one .nil) .nil))) two := Eq.refl
 
+-- structure PIStruct (A : Prop) (P : A -> Prop) (T : A -> Type) (a : A) (p : P a) (t : T a)
+structure PIStruct (A : Prop) (P : A -> Prop) (a : A) (p : P a)
+
+#print PIStruct
+#print PIStruct.mk
+#print PIStruct.rec
+
+def PITest1 (A : Prop) (T : A -> Type) (a a' : A) (t : T a) : T a' := t
+def PITest2 (A : Prop) (B : Type) (T : A -> Type) (P : B -> A) (Q : B -> A) (b b' : B) (t : T (P b)) : T (Q b') := t
+
+-- TODO FIXME implement proof irrelevance
+-- def PITest (A : Prop) (F : A -> Prop) (a a' : A) (f : F a) (f' : F a') : Eq (PIStruct A F a f) (PIStruct A F a' f') := Eq.refl
+
+structure PIPolyStruct (A : Sort u) (B : Sort v) (C : Sort w) (a : A) (b : B) (c : C)
+
+#print PIPolyStruct.mk
+
+-- TODO FIXME implement proof irrelevance
+-- def PIPolyTest1 (A : Type) (B : Type) (C : Type) (a : A) (b : B) (c : C) : Eq (PIPolyStruct A B C a b c) (PIPolyStruct A B C a b c) := Eq.refl
+-- def PIPolyTest2 (A : Prop) (B : Type) (C : Type) (a a' : A) (b : B) (c : C) : Eq (PIPolyStruct A B C a b c) (PIPolyStruct A B C a' b c) := Eq.refl
+
 -- def nestTest : Eq (Tree.rec (fun a _ n => a + n) 0 (fun _ _ n n' => n + n') (Tree.node 1 (TreeList.cons (Tree.node 1 TreeList.nil) TreeList.nil))) 2 :=  Eq.refl _ -- FIXME add metaprogramming so can write like this
 -- noncomputable def nestTest' : Nat := (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil)))
 -- def nestTest : Eq (Tree.rec (fun a _ n => Nat.add a n) Nat.zero (fun _ _ n n' => Nat.add n n') (Tree.node (Nat.succ (Nat.zero)) (TreeList.cons (Tree.node (Nat.succ (Nat.zero)) TreeList.nil) TreeList.nil))) (Nat.succ (Nat.succ (Nat.zero))) :=  Eq.refl

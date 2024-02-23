@@ -43,6 +43,25 @@ def dupParams (origParams : Array Lean.Expr) : TransM (Array (Name × Lean.Binde
 
 
 mutual
+  partial def fromExprPossiblyErased (e : Lean.Expr) : TransM Expr := do
+    -- if (← read).eraseProofs then -- FIXME necessary?
+    if (← read).eraseProofs then
+      match e with
+      -- TODO do we really have to consider the constant case? If a constant is a proof, then it should already be unique,
+      -- but it is possible to declare multiple argument-less constructors for a propositional inductive type
+      | e@(.const ..)
+      | e@(.app ..)
+      | e@(.letE ..)
+      | e@(.fvar ..) => do
+        let type ← inferType e
+        let sort ← inferType type
+        if sort == .sort .zero then
+          pure $ .app (.const `enc.Erased) (← fromExpr type)
+        else
+          fromExpr e
+      | e@(_) => fromExpr e
+    else fromExpr e
+
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
     | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
@@ -54,7 +73,7 @@ mutual
     | e@(.app (.lam _ _ _ _) _) => do
       pure (← fromExpr $ ← Lean.Core.betaReduce e) -- immediately reduce beta-redexes, as unannotated lambdas are not allowed in Dedukti (FIXME can use full reduction once subsingleton elimination has been implemented)
     | .app fnc arg => do
-      pure $ .app (← fromExpr fnc) (← fromExpr arg)
+      pure $ .app (← fromExpr fnc) (← fromExprPossiblyErased arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
                                 domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
                                   pure (.lam curr)
@@ -71,6 +90,7 @@ mutual
                                 pure ret
     | .letE name typ val bod _ => -- TODO recursive lets (with references in type)?
       withLetDecl name typ val fun x => do
+        -- TODO refactor to construct aux let constant from Lean types
         let bod := bod.instantiate1 x
 
         let type ← (← read).fvars.foldrM (init := ← fromExprAsType typ) fun fvar acc => do
@@ -79,6 +99,7 @@ mutual
           pure $ .pi dom acc
         let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
 
+        -- TODO fromExprPossiblyErased?
         let val ← fromExpr val
         let letName ← nextLetName
         let fvars :=  (← read).fvars.toList
@@ -126,7 +147,7 @@ mutual
   partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
   withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← read).constName
-    let type ← fromExprAsType cnst.type
+    let type ← withEraseProofs $ fromExprAsType cnst.type
     let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
     match cnst with
     | .axiomInfo    (_ : Lean.AxiomVal) => pure $ .static name type
@@ -178,7 +199,7 @@ mutual
                   pure $ .definable name type [.mk numVars lhs rhs]
     | .inductInfo   (_ : Lean.InductiveVal) => pure $ .static name type
     | .ctorInfo     (val : Lean.ConstructorVal) => do
-      if Lean.isStructure env val.induct then
+      if Lean.isStructure env val.induct && val.numFields > 0 then
         forallTelescope cnst.type fun params outType => do
           withLocalDecl default default outType fun outVar => do
             let params := params[:params.size - val.numFields] -- will replace fields with projection applications
@@ -190,6 +211,7 @@ mutual
                 pure $ Lean.mkAppN (.const projFn lvls) (params ++ #[outVar])
               | .none => tthrow "impossible case"
 
+            --- make eta rule
             let lhsLean := Lean.mkAppN (.const name lvls) (params ++ projApps)
             let rhsLean := outVar
             let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ #[outVar]) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)

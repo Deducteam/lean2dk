@@ -43,7 +43,8 @@ def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid nami
   `enc.Univ,
   `enc.Sort,
   `enc.El,
-  `enc.Pi
+  `enc.Pi,
+  `enc.Erased
 ].foldl (init := default) fun curr n => curr.insert n
 
 
