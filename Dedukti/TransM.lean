@@ -8,11 +8,13 @@ namespace Trans
 structure Context where
   constName  : Name := default
   /-- Don't perform universe level normalization on variables; used in e.g. recursor rewrite rules. -/
-  noLVarNormalize : Bool := false
-  /-- Erase proofs (to account for proof irrelevance). -/
-  eraseProofs : Bool := false
+  inRewriteRule : Bool := false
+  /-- Whether we are currently translationg the righthand side of a rewrite rule -/
+  inRHS : Bool := false
   /-- Also translate any constant dependencies when they are encountered. -/
   transDeps : Bool := false
+  /-- Whether to attempt to make rules left-linear (to set to false for compatibility with Dedukti). -/
+  makeLL : Bool := true
   /-- Counter for lets encountered in a constant,
   to allow for uniquely naming auxilliary let definitions. -/
   numLets    : Nat := 0
@@ -42,13 +44,13 @@ def tthrow (msg : String) : TransM α := do -- FIXME is there a way to make this
 throw $ .error default s!"{msg}\nWhile translating: {(← read).constName}"
 
 def withResetCtx : TransM α → TransM α :=
-  withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false, eraseProofs := false }
+  withReader fun ctx => { ctx with fvars := #[], lvlParams := default, inRewriteRule := false, inRHS := false, }
 
-def withNoLVarNormalize : TransM α → TransM α :=
-  withReader fun ctx => { ctx with noLVarNormalize := true }
+def withInRewriteRule : TransM α → TransM α :=
+  withReader fun ctx => { ctx with inRewriteRule := true }
 
-def withEraseProofs : TransM α → TransM α :=
-  withReader fun ctx => { ctx with eraseProofs := true }
+def withInRHS : TransM α → TransM α :=
+  withReader fun ctx => { ctx with inRHS := true }
 
 def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }

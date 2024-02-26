@@ -44,23 +44,43 @@ def dupParams (origParams : Array Lean.Expr) : TransM (Array (Name × Lean.Binde
 
 mutual
   partial def fromExprPossiblyErased (e : Lean.Expr) : TransM Expr := do
-    -- if (← read).eraseProofs then -- FIXME necessary?
-    if (← read).eraseProofs then
-      match e with
-      -- TODO do we really have to consider the constant case? If a constant is a proof, then it should already be unique,
-      -- but it is possible to declare multiple argument-less constructors for a propositional inductive type
-      | e@(.const ..)
-      | e@(.app ..)
-      | e@(.letE ..)
-      | e@(.fvar ..) => do
+    match e with
+    -- TODO do we really have to consider the constant case? If a constant is a proof, then it should already be unique,
+    -- but it is possible to declare multiple argument-less constructors for a propositional inductive type
+    | e@(.const ..)
+    | e@(.app ..)
+    | e@(.letE ..) => do
+      if not (← read).inRewriteRule then
         let type ← inferType e
         let sort ← inferType type
         if sort == .sort .zero then
           pure $ .app (.const `enc.Erased) (← fromExpr type)
         else
           fromExpr e
-      | e@(_) => fromExpr e
-    else fromExpr e
+      else
+        fromExpr e
+
+    | e@(.fvar ..) => do
+      let type ← inferType e
+      let sort ← inferType type
+      if sort == .sort .zero then
+        if (← read).inRewriteRule then
+          let erasedArg := match type with
+          | v@(.fvar ..) => v -- if the type is already an fvar, use that to avoid (Dedukti) type errors
+          | _ => e
+          -- have to replace free variables representing proofs with lambdas
+          forallTelescope type fun vars _ => do
+            if (← read).inRHS then -- lambdas on the RHS must be typed
+              let (ret, _) ← vars.foldrM (init := (.app (.const `enc.Erased) (← withTypedFVars vars $ fromExpr erasedArg), vars.size)) fun v (accExpr, numVars) => do
+                pure $ (.lam accExpr $ ← withTypedFVars vars[:numVars - 1] $ fromExprAsType (← inferType v), numVars - 1) -- TODO verify order
+              pure ret
+            else
+              pure $ vars.foldl (init := .app (.const `enc.Erased) (← withTypedFVars vars $ fromExpr erasedArg)) fun acc _ => .lam acc none
+        else
+          pure $ .app (.const `enc.Erased) (← fromExpr type)
+      else
+        fromExpr e
+    | e@(_) => fromExpr e
 
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
@@ -73,10 +93,10 @@ mutual
     | e@(.app (.lam _ _ _ _) _) => do
       pure (← fromExpr $ ← Lean.Core.betaReduce e) -- immediately reduce beta-redexes, as unannotated lambdas are not allowed in Dedukti (FIXME can use full reduction once subsingleton elimination has been implemented)
     | .app fnc arg => do
-      pure $ .app (← fromExpr fnc) (← fromExprPossiblyErased arg)
+      pure $ .app (← fromExprPossiblyErased fnc) (← fromExprPossiblyErased arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
                                 domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
-                                  pure (.lam curr)
+                                  pure (.lam curr none)
     | e@(.forallE ..) => forallTelescope e fun domVars img => do
                                 let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromInferredType img)) fun i (curr, s2) => do
                                   let domVar := domVars[i]!
@@ -85,7 +105,7 @@ mutual
                                   let s3 := Level.imax s1 s2
                                   --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
                                   let ret ← withTypedFVars domVars[:i] do -- TODO probably not necessary to do `withTypedFVars` here (can get domain from (← read).fvarTypes, and the sorts shouldn't contain free variables)
-                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr)])
+                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr none)])
                                   pure (ret, s3)
                                 pure ret
     | .letE name typ val bod _ => -- TODO recursive lets (with references in type)?
@@ -147,7 +167,7 @@ mutual
   partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
   withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← read).constName
-    let type ← withEraseProofs $ fromExprAsType cnst.type
+    let type ← fromExprAsType cnst.type
     let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
     match cnst with
     | .axiomInfo    (_ : Lean.AxiomVal) => pure $ .static name type
@@ -169,13 +189,13 @@ mutual
             let rhsLean := ctorParams[params.size + projInfo.i]!
 
             -- maxS required for e.g. Subtype.property projection rewrite rule
-            let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ ctorParams) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+            let (lhs, rhs) ← withInRewriteRule $ withTypedFVars (params ++ ctorParams) $ do pure (← fromExpr lhsLean, ← withInRHS $ fromExprPossiblyErased rhsLean)
 
             pure $ .definable name type [.mk (lvls.length + params.size + ctorParams.size) lhs rhs]
       else
         let value ← fromExpr val.value
         -- let value ← fromExpr $ ← reduceAll val.value -- FIXME use this version (mainly to shorten output code) once implemented subsingleton elimination (for the moment e.g. Unit.recOn is problematic)
-        let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr
+        let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr none
         pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (_ : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) =>
@@ -195,7 +215,7 @@ mutual
                   let fnArg := params[3]!
                   let rhsLean := Lean.mkApp fnArg instArg
                   let numVars := lvls.length + params.size + instParams.size + 1
-                  let (lhs, rhs) ← withTypedFVars (params ++ instParams ++ [instArg]) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+                  let (lhs, rhs) ← withTypedFVars (params ++ instParams ++ [instArg]) $ withInRewriteRule $ do pure (← fromExpr lhsLean, ← withInRHS $ fromExprPossiblyErased rhsLean)
                   pure $ .definable name type [.mk numVars lhs rhs]
     | .inductInfo   (_ : Lean.InductiveVal) => pure $ .static name type
     | .ctorInfo     (val : Lean.ConstructorVal) => do
@@ -214,7 +234,7 @@ mutual
             --- make eta rule
             let lhsLean := Lean.mkAppN (.const name lvls) (params ++ projApps)
             let rhsLean := outVar
-            let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ #[outVar]) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+            let (lhs, rhs) ← withTypedFVars (params ++ #[outVar]) $ withInRewriteRule $ do pure (← fromExpr lhsLean, ← withInRHS $ fromExprPossiblyErased rhsLean)
             -- dbg_trace s!"found struct: {ctor.name}"
             pure $ .definable name type [.mk (1 + lvls.length + params.size) lhs rhs] -- TODO make injective
       else
@@ -239,17 +259,24 @@ mutual
           -- let numCtorLvls := ctor.levelParams.length
           -- let ctorLvlOffset := cnst.levelParams.length - ctor.levelParams.length-- if large-eliminating, first param is output sort
 
-          withLocalDecls (← dupParams idxArgsOrig) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
-            withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- FIXME better way than double-nesting?
-              -- let idxArgsLean ← idxArgsOrig.mapM fun arg => reduce $ arg.replaceFVars idxVars newIdxVars -- reconstruct index arguments; must reduce because they appear on the LHS of the rewrite rule
-              let ctorAppLean := ctorAppOrig.replaceFVars domVars[:val.numParams] newParamVars
-              let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ newIdxVars ++ #[ctorAppLean]
-              -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
+          if (← read).makeLL then
+            withLocalDecls (← dupParams idxArgsOrig) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
+              withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- FIXME better way than double-nesting?
+                -- let idxArgsLean ← idxArgsOrig.mapM fun arg => reduce $ arg.replaceFVars idxVars newIdxVars -- reconstruct index arguments; must reduce because they appear on the LHS of the rewrite rule
+                let ctorAppLean := ctorAppOrig.replaceFVars domVars[:val.numParams] newParamVars
+                let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ newIdxVars ++ #[ctorAppLean]
+                -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
-              let (lhs, rhs) ← withTypedFVars (domVars ++ newIdxVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr bod)
+                let (lhs, rhs) ← withTypedFVars (domVars ++ newIdxVars ++ newParamVars) $ withInRewriteRule $ do pure (← fromExpr lhsLean, ← withInRHS $ fromExprPossiblyErased bod)
 
-              let numVars := cnst.levelParams.length + domVars.size + newParamVars.size + newIdxVars.size
-              pure $ .mk numVars lhs rhs :: acc
+                let numVars := cnst.levelParams.length + domVars.size + newParamVars.size + newIdxVars.size
+                pure $ .mk numVars lhs rhs :: acc
+          else
+            let ctorAppLean := ctorAppOrig
+            let lhsLean := Lean.mkAppN (.const name lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgsOrig ++ #[ctorAppLean]
+            let (lhs, rhs) ← withTypedFVars domVars $ withInRewriteRule $ do pure (← fromExpr lhsLean, ← withInRHS $ fromExprPossiblyErased bod)
+            let numVars := cnst.levelParams.length + domVars.size
+            pure $ .mk numVars lhs rhs :: acc
 
       pure $ .definable name type rules
 

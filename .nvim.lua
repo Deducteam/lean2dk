@@ -60,7 +60,7 @@ local templates = {
         cmd = { "lake" },
         args = { "run", "check"},
         components = {
-          { "restart_on_save", paths = lean_files}, -- TODO "intelligently" switch task to previous translation task if a lean file was modified
+          { "restart_on_save", paths = dk_files}, -- TODO "intelligently" switch task to previous translation task if a lean file was modified
           "default",
         },
       }

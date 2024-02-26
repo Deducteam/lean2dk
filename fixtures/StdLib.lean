@@ -12,6 +12,7 @@ set_option pp.all true
 #print Subtype.mk
 #print Subtype.val
 #print Subtype.property
+#print Or.rec
 
 def test1 (s : Subtype P1) : Subtype.mk (Subtype.val s) (Subtype.property s) = s := rfl
 

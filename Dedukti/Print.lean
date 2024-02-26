@@ -260,7 +260,8 @@ mutual
       let argExprString ← arg.print
       let argString := if (dkExprNeedsArgParens arg) then s!"({argExprString})" else argExprString
       pure s!"{fnString} {argString}"
-    | .lam bod => pure s!"x{(← read).lvl} => {← withNewPrintMLevel $ bod.print}"
+    | .lam bod (.some typ) => pure s!"x{(← read).lvl}:{← typ.print} => {← withNewPrintMLevel $ bod.print}"
+    | .lam bod .none        => pure s!"x{(← read).lvl} => {← withNewPrintMLevel $ bod.print}"
     | .pi dom img =>
       let domExprString ← dom.print
       let domString := if dkExprNeedsTypeParens dom then s!"({domExprString})" else domExprString

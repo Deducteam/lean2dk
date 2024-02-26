@@ -23,7 +23,7 @@ namespace Encoding
       | .imax l1 l2 => do pure $ .appN (.const `lvl.imax ) [(← toExpr l1), (← toExpr l2)]
       | .var n      => do 
         let var := .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
-        if (← read).noLVarNormalize then 
+        if (← read).inRewriteRule then 
           pure $ .app (.const `normalize.maxS ) var
         else
           pure $ .app (.const `normalize.var ) var
