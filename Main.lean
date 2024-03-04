@@ -47,7 +47,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
   -- run elaborator on Lean file
   Lean.initSearchPath (← Lean.findSysroot)
-  let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
+  let (leanEnv, success) ← Lean.Elab.runFrontend (proofIrrelevance := false) (← IO.FS.readFile path) default fileName default
   if not success then
     throw $ IO.userError $ "elab failed"
 
