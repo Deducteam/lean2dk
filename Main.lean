@@ -1,6 +1,8 @@
 import Dedukti.Trans
 import Dedukti.Print
 import Cli
+import Lean.Replay
+import Dedukti.Util
 
 open Dedukti
 
@@ -55,6 +57,10 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   IO.println s!"{NOCOLOR}"
   if let some onlyConsts := onlyConsts? then
     printColor BLUE s!">> Only translating constants: {onlyConsts}..."
+    printColor BLUE s!">> Re-typechecking constants..."
+    let (_, {map := map, ..}) ← ((Deps.namedConstsDeps (onlyConsts.map String.toName).toList).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv} {env := leanEnv})
+    let modEnv := (← Lean.mkEmptyEnvironment).setProofIrrelevance false
+    discard $ modEnv.replay map
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
   else
     printColor BLUE s!">> Translating entire file..."
