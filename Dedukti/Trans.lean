@@ -258,6 +258,6 @@ def translateEnv (consts? : Option $ Array Name := none) (transDeps : Bool := fa
     (← read).env.constants.forM (fun _ cinfo => do
       if !cinfo.name.isInternal then
         transConst cinfo
-  )
+    )
 
 end Trans

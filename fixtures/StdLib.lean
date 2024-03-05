@@ -34,7 +34,7 @@ theorem myEm (p : Prop) : p ∨ ¬p :=
         show (x = True ∨ p) = (x = False ∨ p) from
           propext (Iff.intro hl hr)
     have h₀ : ∀ exU exV, @choose _ U exU = @choose _ V exV := by
-      rw [hpred]; intros; rfl
+      rw [hpred]; intros; exact myRefl _ _
     show u = v from h₀ _ _
   match not_uv_or_p with
   | Or.inl hne => Or.inr (mt p_implies_uv hne)
@@ -51,6 +51,11 @@ theorem myEm (p : Prop) : p ∨ ¬p :=
 #print Subtype.property
 
 def test1 (s : Subtype P1) : Subtype.mk (Subtype.val s) (Subtype.property s) = s := rfl
+
+noncomputable instance (priority := low) myPropDecidable (a : Prop) : Decidable a :=
+  choice <| match myEm a with
+    | Or.inl h => ⟨isTrue h⟩
+    | Or.inr h => ⟨isFalse h⟩
 
 def P1 : Bool → Prop
   | .true => True
