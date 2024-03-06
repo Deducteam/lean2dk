@@ -20,7 +20,7 @@ def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
 
 open Cli
 
-def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
+def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
   let printDeps := if let some _ := only? then false else true
 
   -- print Dedukti environment
@@ -31,13 +31,45 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Array String) : IO Unit := do
       if let some only := only? then
         for name in only do
           let maxConstPrint := 400 -- FIXME make "constant"
-          let constString := s.printedConsts.find! (fixLeanName name.toName)
+          let constString := s.printedConsts.find! (fixLeanName name)
           let constString := if constString.length > maxConstPrint then constString.extract ⟨0⟩ ⟨maxConstPrint⟩ ++ "..." else constString
           IO.println $ "\n" ++ constString
       else
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
         IO.FS.writeFile "dk/out.dk" dkEnvString
+
+def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (printErr := false) : IO Lean.NameSet := do
+  let mut onlyConstsToTrans : Lean.NameSet := default
+
+  -- constants that should be skipped on account of already having been typechecked
+  let mut skipConsts : Lean.NameSet := default
+  -- constants that should throw an error if encountered on account of having previously failed to typecheck
+  let mut errConsts : Lean.NameSet := default
+  let mut modEnv := (← Lean.mkEmptyEnvironment).setProofIrrelevance false
+  for const in consts do
+    try
+      let mut (_, {map := map, ..}) ← ((Deps.namedConstDeps const).toIO { options := default, fileName := "", fileMap := default } {env} {env})
+      let mapConsts := map.fold (init := default) fun acc const _ => acc.insert const
+
+      let erredConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) errConsts
+      if erredConsts.size > 0 then
+        throw $ IO.userError "Encountered untypecheckable constant dependencies: {erredConsts}."
+
+      let skippedConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) skipConsts
+      for skipConst in skippedConsts do
+        map := map.erase skipConst
+
+      modEnv ← modEnv.replay map
+      skipConsts := skipConsts.union mapConsts -- TC success, so want to skip in future runs (already in environment)
+      onlyConstsToTrans := onlyConstsToTrans.insert const
+    catch
+    | e =>
+      if printErr then
+        IO.eprintln s!"Error typechecking constant '{const}': {e.toString}"
+      errConsts := errConsts.insert const
+
+  pure onlyConstsToTrans
 
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
@@ -49,26 +81,28 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
   -- run elaborator on Lean file
   Lean.initSearchPath (← Lean.findSysroot)
-  let (leanEnv, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
+  let (env, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
   if not success then
     throw $ IO.userError $ "elab failed"
 
+  let mut onlyConstsToTrans? := none
   let mut write := true
   IO.println s!"{NOCOLOR}"
   if let some onlyConsts := onlyConsts? then
-    printColor BLUE s!">> Only translating constants: {onlyConsts}..."
-    printColor BLUE s!">> Re-typechecking constants..."
-    let (_, {map := map, ..}) ← ((Deps.namedConstsDeps (onlyConsts.map String.toName).toList).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv} {env := leanEnv})
-    let modEnv := (← Lean.mkEmptyEnvironment).setProofIrrelevance false
-    discard $ modEnv.replay map
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
+
+    printColor BLUE s!">> Re-typechecking specified constants: {onlyConsts}..."
+    -- env := modEnv
+    let onlyConstsSet := onlyConsts.foldl (init := default) fun acc const => acc.insert const.toName
+
+    let onlyConstsToTrans ← getCheckableConstants env onlyConstsSet (printErr := true)
+
+    onlyConstsToTrans? := .some onlyConstsToTrans
+    printColor BLUE s!">> Only translating constants [{onlyConstsToTrans.size}/{onlyConsts.size}]: {onlyConstsToTrans.toArray}..."
   else
     printColor BLUE s!">> Translating entire file..."
-
-  let onlyConstsToTrans? := onlyConsts?.map fun onlyConsts => onlyConsts.map (·.toName)
   -- translate elaborated Lean environment to Dedukti
-  let (_, {env := dkEnv, ..}) ← ((Trans.translateEnv onlyConstsToTrans? (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env := leanEnv} {env := leanEnv}
-)
+  let (_, {env := dkEnv, ..}) ← (Trans.translateEnv onlyConstsToTrans? (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
 
   -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
@@ -77,7 +111,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     printDkEnv dkEnv none
 
   if p.hasFlag "print" then
-    printDkEnv dkEnv onlyConsts?
+    printDkEnv dkEnv onlyConstsToTrans?
   IO.print s!"{NOCOLOR}"
 
   return 0

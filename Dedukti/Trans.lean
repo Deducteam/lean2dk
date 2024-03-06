@@ -249,7 +249,7 @@ mutual
 
 end
 
-def translateEnv (consts? : Option $ Array Name := none) (transDeps : Bool := false) : TransM Unit := do
+def translateEnv (consts? : Option $ Lean.NameSet := none) (transDeps : Bool := false) : TransM Unit := do
   match consts? with
   | some consts =>
     for const in consts do
