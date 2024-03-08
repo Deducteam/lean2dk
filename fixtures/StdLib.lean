@@ -46,7 +46,8 @@ theorem myEm (p : Prop) : p ∨ ¬p :=
 -- #reduce semiOutParam (Sort u)
 --
 -- #print Classical.em
-#print Subtype.mk
+-- #print myEm
+-- #print Classical.em
 #print Subtype.val
 #print Subtype.property
 

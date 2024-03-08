@@ -49,19 +49,20 @@ def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (prin
   let mut modEnv := (← Lean.mkEmptyEnvironment).setProofIrrelevance false
   for const in consts do
     try
-      let mut (_, {map := map, ..}) ← ((Deps.namedConstDeps const).toIO { options := default, fileName := "", fileMap := default } {env} {env})
-      let mapConsts := map.fold (init := default) fun acc const _ => acc.insert const
+      if not $ skipConsts.contains const then
+        let mut (_, {map := map, ..}) ← ((Deps.namedConstDeps const).toIO { options := default, fileName := "", fileMap := default } {env} {env})
+        let mapConsts := map.fold (init := default) fun acc const _ => acc.insert const
 
-      let erredConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) errConsts
-      if erredConsts.size > 0 then
-        throw $ IO.userError "Encountered untypecheckable constant dependencies: {erredConsts}."
+        let erredConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) errConsts
+        if erredConsts.size > 0 then
+          throw $ IO.userError "Encountered untypecheckable constant dependencies: {erredConsts}."
 
-      let skippedConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) skipConsts
-      for skipConst in skippedConsts do
-        map := map.erase skipConst
+        let skippedConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) skipConsts
+        for skipConst in skippedConsts do
+          map := map.erase skipConst
 
-      modEnv ← modEnv.replay map
-      skipConsts := skipConsts.union mapConsts -- TC success, so want to skip in future runs (already in environment)
+        modEnv ← modEnv.replay map
+        skipConsts := skipConsts.union mapConsts -- TC success, so want to skip in future runs (already in environment)
       onlyConstsToTrans := onlyConstsToTrans.insert const
     catch
     | e =>
@@ -74,6 +75,7 @@ def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (prin
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
+  let moduleName ← Lean.moduleNameOfFileName path .none 
   IO.println s!"\n{BLUE}>> Translation file: {YELLOW}{fileName}{NOCOLOR}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
@@ -81,28 +83,35 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
   -- run elaborator on Lean file
   Lean.initSearchPath (← Lean.findSysroot)
-  let (env, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName default
+  let (env, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName moduleName
   if not success then
     throw $ IO.userError $ "elab failed"
 
-  let mut onlyConstsToTrans? := none
   let mut write := true
   IO.println s!"{NOCOLOR}"
-  if let some onlyConsts := onlyConsts? then
+
+  let mut onlyConstsArr := #[]
+  if let some _onlyConsts := onlyConsts? then
     write := (not $ p.hasFlag "print") || p.hasFlag "write"
-
-    printColor BLUE s!">> Re-typechecking specified constants: {onlyConsts}..."
-    -- env := modEnv
-    let onlyConstsSet := onlyConsts.foldl (init := default) fun acc const => acc.insert const.toName
-
-    let onlyConstsToTrans ← getCheckableConstants env onlyConstsSet (printErr := true)
-
-    onlyConstsToTrans? := .some onlyConstsToTrans
-    printColor BLUE s!">> Only translating constants [{onlyConstsToTrans.size}/{onlyConsts.size}]: {onlyConstsToTrans.toArray}..."
+    printColor BLUE s!">> Using CLI-specified constants: {_onlyConsts}..."
+    onlyConstsArr := _onlyConsts.map (·.toName)
   else
-    printColor BLUE s!">> Translating entire file..."
+    printColor BLUE s!">> Using all constants from given module: {moduleName}..."
+    onlyConstsArr := env.constants.map₂.toArray.map fun (x : Name × Lean.ConstantInfo) => x.1
+
+  let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
+    if !const.isImplementationDetail && !const.isCStage then acc.insert const else acc
+
+  let onlyConsts ← getCheckableConstants env onlyConstsInit (printErr := true)
+
+  let ignoredConsts := onlyConstsInit.diff onlyConsts
+  if ignoredConsts.size > 0 then
+    printColor RED s!"WARNING: Skipping translation of {ignoredConsts.size} constants: {ignoredConsts.toArray}..."
+
+  printColor BLUE s!">> Translating {onlyConsts.size} constants..."
+
   -- translate elaborated Lean environment to Dedukti
-  let (_, {env := dkEnv, ..}) ← (Trans.translateEnv onlyConstsToTrans? (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
+  let (_, {env := dkEnv, ..}) ← (Trans.translateEnv onlyConsts (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
 
   -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
@@ -111,7 +120,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     printDkEnv dkEnv none
 
   if p.hasFlag "print" then
-    printDkEnv dkEnv onlyConstsToTrans?
+    printDkEnv dkEnv $ .some onlyConsts
   IO.print s!"{NOCOLOR}"
 
   return 0
