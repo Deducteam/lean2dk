@@ -240,24 +240,18 @@ mutual
     set s -- FIXME why can't use modify here?
 
   partial def transNamedConst (const : Name) : TransM Unit := do
-      match (← get).env.constMap.find? (fixLeanName const) with -- only translate if not already translated
-      | some _ => pure ()
-      | none =>
-        match (← read).env.constants.find? const with
-        | some cinfo => transConst cinfo
-        | none => tthrow s!"could not find constant \"{const}\" for translation, verify that it exists in the Lean input"
+    match (← get).env.constMap.find? (fixLeanName const) with -- only translate if not already translated
+    | some _ => pure ()
+    | none =>
+      match (← read).env.constants.find? const with
+      | some cinfo => if !cinfo.name.isImplementationDetail && !cinfo.name.isCStage then
+        transConst cinfo
+      | none => tthrow s!"could not find constant \"{const}\" for translation, verify that it exists in the Lean input"
 
 end
 
-def translateEnv (consts? : Option $ Lean.NameSet := none) (transDeps : Bool := false) : TransM Unit := do
-  match consts? with
-  | some consts =>
-    for const in consts do
-      withTransDeps transDeps $ transNamedConst const
-  | none =>
-    (← read).env.constants.forM (fun _ cinfo => do
-      if !cinfo.name.isInternal then
-        transConst cinfo
-    )
+def translateEnv (consts : Lean.NameSet) (transDeps : Bool := false) : TransM Unit := do
+  for const in consts do
+    withTransDeps transDeps $ transNamedConst const
 
 end Trans

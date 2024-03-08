@@ -3,6 +3,14 @@ open Lean
 
 def fixLeanName (name : Name) : Name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
 
+partial def Lean.Name.isCStage : Name → Bool
+| .str p s   => s.startsWith "_cstage" || p.isCStage
+| .num p _   => p.isCStage
+| .anonymous => false
+
+def ignoredConstant : Name → Bool
+| n => !n.isImplementationDetail && !n.isCStage
+
 namespace Deps
   structure Context where
     env        : Environment
@@ -25,7 +33,8 @@ namespace Deps
       modify fun s => { s with map := s.map.insert name const }
       let deps := const.getUsedConstantsAsSet
       for dep in deps do
-        namedConstDeps dep
+        if !dep.isImplementationDetail && !dep.isCStage then
+          namedConstDeps dep
     | .some _ => pure default
 end Deps
 
