@@ -59,7 +59,7 @@ def withFVars (fvarTypes : Std.RBMap Name Expr compare) (fvars : Array Lean.Expr
   let newFvarTypes := (← read).fvarTypes.mergeWith (fun _ _ t => t) fvarTypes
   withReader (fun ctx => { ctx with fvarTypes := newFvarTypes, fvars := newFvars }) m
 
-def nextLetName : TransM Name := do pure $ fixLeanName $ ((← read).constName).toString ++ "_let" ++ (toString (← read).numLets)
+def nextLetName : TransM Name := do pure $ fixLeanName $ ((← read).constName).toString false ++ "_let" ++ (toString (← read).numLets)
 
 def withLet (varName : Name) (m : TransM α) : TransM α := do
   let lvars := (← read).lvars.insert varName ((← read).fvars.size, ← nextLetName)

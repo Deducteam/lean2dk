@@ -55,7 +55,7 @@ def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (prin
 
         let erredConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) errConsts
         if erredConsts.size > 0 then
-          throw $ IO.userError "Encountered untypecheckable constant dependencies: {erredConsts}."
+          throw $ IO.userError s!"Encountered untypecheckable constant dependencies: {erredConsts.toList}."
 
         let skippedConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) skipConsts
         for skipConst in skippedConsts do
@@ -108,6 +108,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   if ignoredConsts.size > 0 then
     printColor RED s!"WARNING: Skipping translation of {ignoredConsts.size} constants: {ignoredConsts.toArray}..."
 
+  -- printColor BLUE s!">> Translating {onlyConsts.size} constants: {onlyConsts.toArray}..."
   printColor BLUE s!">> Translating {onlyConsts.size} constants..."
 
   -- translate elaborated Lean environment to Dedukti
