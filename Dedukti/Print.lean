@@ -251,7 +251,7 @@ mutual
               -- is correctly linearized upon printing the .dk file
               let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
               const.print
-      pure $ toString name
+      pure $ name.toString false
     | .fixme msg => pure s!"Type (;{msg};)"
     | .app fn arg =>
       let fnExprString ← fn.print
@@ -287,7 +287,7 @@ mutual
       | .definable (name : Name) (type : Expr) (rules : List Rule) => do
         -- dbg_trace s!"printing: {name}"
         -- modify fun s => { s with pendingRules := s.pendingRules.insert name [] } -- TODO needed?
-        let declString := s!"def {name} : {← withPendingType name type.print}."
+        let declString := s!"def {name.toString false} : {← withPendingType name type.print}."
         -- dbg_trace s!"done printing type of: {name}"
         modify fun s => { s with out := s.out ++ [declString], pendingRules := s.pendingRules.insert name [] }
 

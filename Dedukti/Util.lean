@@ -1,7 +1,21 @@
 import Lean
 open Lean
 
-def fixLeanName (name : Name) : Name := name.toStringWithSep "_" false -- TODO what does the "escape" param do exactly?
+def charSubs := [
+  -- ("»", "-_"),
+  -- ("«", "_-"),
+  (":", "_cln_"),
+]
+
+def fixLeanNameStr (name : String) : String := charSubs.foldl (init := name) fun acc (orig, sub) => acc.replace orig sub
+
+def fixLeanName' : Name → Name
+| .str p s   => .str (fixLeanName' p) $ fixLeanNameStr s
+| .num p n   => .num (fixLeanName' p) n
+| .anonymous => .anonymous
+
+def fixLeanName (n : Name) : Name :=
+  fixLeanName' n |>.toStringWithSep "_" false
 
 partial def Lean.Name.isCStage : Name → Bool
 | .str p s   => s.startsWith "_cstage" || p.isCStage
