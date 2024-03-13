@@ -97,7 +97,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     onlyConstsArr := _onlyConsts.map (·.toName)
   else
     printColor BLUE s!">> Using all constants from given module: {moduleName}..."
-    onlyConstsArr := env.constants.map₂.toArray.map fun (x : Name × Lean.ConstantInfo) => x.1
+    onlyConstsArr := ⟨env.constants.map₂.toList.map fun (x : Name × Lean.ConstantInfo) => x.1⟩
 
   let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
     if !const.isImplementationDetail && !const.isCStage then acc.insert const else acc

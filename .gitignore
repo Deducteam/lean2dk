@@ -9,6 +9,7 @@ sess.vim
 /dk/out.dk
 stdout
 /fixtures/stdlib/
+/fixtures/Prelude/
 *.dko
 .depend
 /.lake
