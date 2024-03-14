@@ -1,4 +1,5 @@
 import Dedukti.Trans
+import Mathlib
 import Dedukti.Print
 import Cli
 import Lean.Replay

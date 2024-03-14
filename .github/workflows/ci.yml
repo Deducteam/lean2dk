@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  LEAN_GITHASH: 6fce8f7d5cd18a4419bca7fd51780c71c9b1cc5a
+
 jobs:
   ci:
     strategy:
@@ -29,5 +32,11 @@ jobs:
       - run: opam install lambdapi
       - uses: Julian/setup-lean@v1
 
+      - name: set override
+        run: lake update && elan override set rish987/lean4:lean2dk-v1
+
+      - name: build
+        run: lake --version && LEAN_GITHASH=6fce8f7d5cd18a4419bca7fd51780c71c9b1cc5a lake build
+
       - name: Test translation
-        run: eval $(opam env) && lake run trans fixtures/Test.lean
+        run: eval $(opam env) && lake --version && lake run trans fixtures/Test.lean

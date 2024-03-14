@@ -11,8 +11,8 @@ lean_exe lean2dk where
 
 lean_lib Dedukti { roots := #[`Dedukti] }
 
-require std from git
-  "https://github.com/leanprover/std4" @ "v4.7.0-rc1"
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4" @ "v4.7.0-rc2"
 
 require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "main"
