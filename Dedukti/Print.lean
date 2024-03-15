@@ -142,11 +142,16 @@ def eraseFromValues (map : Std.RBMap Name (Std.RBSet Name compare) compare) (nam
       newMap.insert thisName newSet
 
 def updateTypePrinted (const : Name) : PrintM Unit := do
-  modify fun s => { s with ruleTypesRefs := eraseFromValues s.ruleTypesRefs const}
   modify fun s => { s with rulePendingTypesRefs := eraseFromValues s.rulePendingTypesRefs const}
 
+/--
+  The rules for this constant have been printed, so we can remove this dependency from
+  rules that may depend on it in their types or values.
+
+-/
 def updateRulesPrinted (const : Name) : PrintM Unit := do
   modify fun s => { s with typeTypesRefs := eraseFromValues s.typeTypesRefs const}
+  modify fun s => { s with ruleTypesRefs := eraseFromValues s.ruleTypesRefs const}
 
 partial def getPrintableRules : PrintM $ List String := do
   let mut rulesToPrint := []

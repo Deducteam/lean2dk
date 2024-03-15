@@ -108,6 +108,14 @@ end
 
 local prev_onlys_file = vim.fn.stdpath("data") .. "/" .. "prev_onlys.json"
 local prev_onlys = vim.fn.filereadable(prev_onlys_file) ~= 0 and vim.fn.json_decode(vim.fn.readfile(prev_onlys_file)) or {}
+for only, only_info in pairs(prev_onlys) do
+  if type(only_info) == "number" then
+    prev_onlys[only] = nil
+  end
+end
+local json = vim.fn.json_encode(prev_onlys)
+vim.fn.writefile({json}, prev_onlys_file)
+
 local last_template
 local last_params = {}
 
@@ -122,72 +130,30 @@ local function resume_prev_template()
   run_template(last_template, last_params)
 end
 
-local function run_only(only)
-  if #only == 0 then print"Error: no constant specified" return end
-  local only_info = prev_onlys[only] or {}
-  local select_file = type(only_info) == "number" or not curr_trans_file
-
-  local function run()
-    only_info.time = os.time()
-
-    prev_onlys[only] = only_info
-
-    local json = vim.fn.json_encode(prev_onlys)
-    vim.fn.writefile({json}, prev_onlys_file)
-
-    curr_trans_file = only_info.file
-    run_template("translate only", {only = only, file = only_info.file})
-  end
-
-  if select_file then -- back-compat to update only_info with filename
-    only_info = {time = only_info}
-
-    local results = {}
-
-    for _, file in ipairs(vim.fn.split(vim.fn.glob("fixtures/**/*.lean"), "\n")) do
-      file = vim.loop.fs_realpath(file)
-      table.insert(results, file)
-    end
-
-    pickers
-      .new({}, {
-        prompt_title = string.format("Choose file to translate", vim.fn.fnamemodify(curr_trans_file, ":t")),
-        finder = finders.new_table {
-          results = results,
-          entry_maker = make_entry.gen_from_file(),
-        },
-        sorter = sorters.Sorter:new {
-          discard = true,
-
-          scoring_function = function(_, _, line)
-            return prev_trans[line] and -prev_trans[line] or 0
-          end,
-        },
-        previewer = conf.grep_previewer(),
-        attach_mappings = function(prompt_bufnr)
-          actions.select_default:replace(function()
-            local selection = action_state.get_selected_entry()
-
-            only_info.file = selection.value
-            actions.close(prompt_bufnr)
-
-            run()
-          end)
-
-          return true
-        end,
-      }):find()
-  else
-    only_info.file = only_info.file or curr_trans_file
-    run()
-  end
-end
-
 local function choose_trans(trans_file)
   prev_trans[trans_file] = os.time()
   local json = vim.fn.json_encode(prev_trans)
   vim.fn.writefile({json}, prev_trans_file)
   curr_trans_file = trans_file
+end
+
+local function _run_only(only_info)
+  only_info.time = os.time()
+
+  local json = vim.fn.json_encode(prev_onlys)
+  vim.fn.writefile({json}, prev_onlys_file)
+
+  choose_trans(only_info.file)
+  run_template("translate only", {only = only_info.const, file = only_info.file})
+end
+
+local function run_only(const, file)
+  file = file or curr_trans_file
+  if #const == 0 then print"Error: no constant specified" return end
+  local key = file .. "->" .. const
+  local only_info = prev_onlys[key] or {const = const, file = file}
+  prev_onlys[key] = only_info
+  _run_only(only_info)
 end
 
 local transfile_picker = function(opts)
@@ -239,9 +205,9 @@ local only_picker = function(opts) return pickers
     finder = finders.new_table {
       results = (function()
         local onlys = {}
-        for only, only_info in pairs(prev_onlys) do
+        for key, only_info in pairs(prev_onlys) do
           local file = type(only_info) == "table" and vim.fn.fnamemodify(only_info.file, ":~:.") or "(UNSET)"
-          local info = {const = only, text = file .. " --> " .. only}
+          local info = {const = key, text = file .. " --> " .. only_info.const}
           table.insert(onlys, info)
         end
         return onlys
@@ -275,7 +241,8 @@ local only_picker = function(opts) return pickers
 
         actions.close(prompt_bufnr)
         local val = selection.value
-        run_only(val)
+
+        _run_only(prev_onlys[val])
       end)
 
       return true
