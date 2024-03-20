@@ -1,8 +1,9 @@
 import Dedukti.Trans
-import Mathlib
 import Dedukti.Print
 import Cli
 import Lean.Replay
+import Lean4Lean.Replay
+import Lean4Lean.Commands
 import Dedukti.Util
 
 open Dedukti
@@ -47,7 +48,7 @@ def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (prin
   let mut skipConsts : Lean.NameSet := default
   -- constants that should throw an error if encountered on account of having previously failed to typecheck
   let mut errConsts : Lean.NameSet := default
-  let mut modEnv := (← Lean.mkEmptyEnvironment).setProofIrrelevance false
+  let mut modEnv ← Lean.mkEmptyEnvironment
   for const in consts do
     try
       if not $ skipConsts.contains const then
@@ -62,13 +63,13 @@ def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (prin
         for skipConst in skippedConsts do
           map := map.erase skipConst
 
-        modEnv ← modEnv.replay map
+        modEnv ← Lean4Lean.replay {newConstants := map} modEnv 
         skipConsts := skipConsts.union mapConsts -- TC success, so want to skip in future runs (already in environment)
       onlyConstsToTrans := onlyConstsToTrans.insert const
     catch
     | e =>
       if printErr then
-        IO.eprintln s!"Error typechecking constant '{const}': {e.toString}"
+        IO.eprintln s!"Error typechecking constant `{const}`: {e.toString}"
       errConsts := errConsts.insert const
 
   pure onlyConstsToTrans
@@ -103,7 +104,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
     if !const.isImplementationDetail && !const.isCStage then acc.insert const else acc
 
-  let onlyConsts ← getCheckableConstants env onlyConstsInit (printErr := true)
+  let onlyConsts ← Lean4Lean.checkConstants env onlyConstsInit (printErr := true)
 
   let ignoredConsts := onlyConstsInit.diff onlyConsts
   if ignoredConsts.size > 0 then

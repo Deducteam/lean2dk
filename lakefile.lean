@@ -17,6 +17,9 @@ require mathlib from git
 require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "main"
 
+require lean4lean from git
+  "https://github.com/rish987/Lean4Lean" @ "lean2dk"
+
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "
   if h : cmd ≠ [] then

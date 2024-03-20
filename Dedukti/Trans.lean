@@ -244,7 +244,7 @@ mutual
     | some _ => pure ()
     | none =>
       match (← read).env.constants.find? const with
-      | some cinfo => if !cinfo.name.isImplementationDetail && !cinfo.name.isCStage then
+      | some cinfo => if !cinfo.name.isImplementationDetail /- && !cinfo.name.isCStage -/ then -- FIXME
         transConst cinfo
       | none => tthrow s!"could not find constant \"{const}\" for translation, verify that it exists in the Lean input"
 
