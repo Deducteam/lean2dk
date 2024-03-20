@@ -10,6 +10,8 @@ lean_exe lean2dk where
   root := `Main
 
 lean_lib Dedukti { roots := #[`Dedukti] }
+@[default_target]
+lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.7.0-rc2"
@@ -53,6 +55,7 @@ def runCmd (cmd : String) : ScriptM $ Except String String := do
 def argsString (args : List String) :=
   s!"{args.foldl (init := "") fun acc arg => acc ++ " " ++ arg}"
 
+-- TODO can call lake exe directly, rather than through runCmd?
 script trans_only (args) do
   IO.println "{BLUE}running translation only..."
   let {stderr, stdout, ..} ← runCmd' s!"lake exe lean2dk{argsString args}"

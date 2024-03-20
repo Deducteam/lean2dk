@@ -41,53 +41,18 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
         IO.FS.writeFile "dk/out.dk" dkEnvString
 
-def getCheckableConstants (env : Lean.Environment) (consts : Lean.NameSet) (printErr := false) : IO Lean.NameSet := do
-  let mut onlyConstsToTrans : Lean.NameSet := default
-
-  -- constants that should be skipped on account of already having been typechecked
-  let mut skipConsts : Lean.NameSet := default
-  -- constants that should throw an error if encountered on account of having previously failed to typecheck
-  let mut errConsts : Lean.NameSet := default
-  let mut modEnv ← Lean.mkEmptyEnvironment
-  for const in consts do
-    try
-      if not $ skipConsts.contains const then
-        let mut (_, {map := map, ..}) ← ((Deps.namedConstDeps const).toIO { options := default, fileName := "", fileMap := default } {env} {env})
-        let mapConsts := map.fold (init := default) fun acc const _ => acc.insert const
-
-        let erredConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) errConsts
-        if erredConsts.size > 0 then
-          throw $ IO.userError s!"Encountered untypecheckable constant dependencies: {erredConsts.toList}."
-
-        let skippedConsts : Lean.NameSet := mapConsts.intersectBy (fun _ _ _ => default) skipConsts
-        for skipConst in skippedConsts do
-          map := map.erase skipConst
-
-        modEnv ← Lean4Lean.replay {newConstants := map} modEnv 
-        skipConsts := skipConsts.union mapConsts -- TC success, so want to skip in future runs (already in environment)
-      onlyConstsToTrans := onlyConstsToTrans.insert const
-    catch
-    | e =>
-      if printErr then
-        IO.eprintln s!"Error typechecking constant `{const}`: {e.toString}"
-      errConsts := errConsts.insert const
-
-  pure onlyConstsToTrans
-
 def runTransCmd (p : Parsed) : IO UInt32 := do
   let path := ⟨p.positionalArg! "input" |>.value⟩
   let fileName := path.toString
   let moduleName ← Lean.moduleNameOfFileName path .none 
+  -- TODO better way to print with colors?
   IO.println s!"\n{BLUE}>> Translation file: {YELLOW}{fileName}{NOCOLOR}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
-  -- run elaborator on Lean file
   Lean.initSearchPath (← Lean.findSysroot)
-  let (env, success) ← Lean.Elab.runFrontend (← IO.FS.readFile path) default fileName moduleName
-  if not success then
-    throw $ IO.userError $ "elab failed"
+  let env ← Lean.importModules #[moduleName] {} 0
 
   let mut write := true
   IO.println s!"{NOCOLOR}"

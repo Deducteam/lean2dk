@@ -33,6 +33,8 @@ abbrev TransM := ReaderT Context $ StateT State MetaM
   let ((a, s), _, _) ← (x.run ctx s).toIO ctxCore sCore
   pure (a, s)
 
+-- TODO is it normal to accumulate so many `withX` functions?
+
 def withNewConstant (constName : Name) (m : TransM α) : TransM α := do
   withReader (fun ctx => { ctx with constName, numLets := 0 }) m
 
@@ -48,7 +50,6 @@ def withNoLVarNormalize : TransM α → TransM α :=
 def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }
 
--- TODO is there an API function to keep track of levels inside of MetaM?
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
   let lvlParams ← params.length.foldM (init := default) fun i curr =>  
     pure $ curr.insert params[i]! i

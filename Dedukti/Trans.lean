@@ -19,11 +19,6 @@ def fromLevel' : Lean.Level → TransM Level
       | tthrow s!"unknown universe parameter {p} encountered"
      -- dbg_trace s!"{p}: {i}"
      pure $ .var i
-     -- TODO deep encoding
-     -- let some i := (← read).lvlParams.find? p
-     --  | tthrow s!"unknown universe parameter {p} encountered"
-     -- pure $ .var i 
-
   | .mvar _     => tthrow "unexpected universe metavariable encountered"
 
 def fromLevel (l : Lean.Level) : TransM Expr := do (← fromLevel' l).toExpr
@@ -173,6 +168,7 @@ mutual
                   let lhsLean := Lean.mkAppN (.const name lvls) (params ++ [ctorAppLean])
                   let fnArg := params[3]!
                   let rhsLean := Lean.mkApp fnArg instArg
+                  -- FIXME ask about when to use array vs list
                   let numVars := lvls.length + params.size + instParams.size + 1
                   let (lhs, rhs) ← withTypedFVars (params ++ instParams ++ [instArg]) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
                   pure $ .definable name type [.mk numVars lhs rhs]
