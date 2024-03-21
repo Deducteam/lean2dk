@@ -64,7 +64,9 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     onlyConstsArr := _onlyConsts.map (·.toName)
   else
     printColor BLUE s!">> Using all constants from given module: {moduleName}..."
-    onlyConstsArr := ⟨env.constants.map₂.toList.map fun (x : Name × Lean.ConstantInfo) => x.1⟩
+    let some moduleIdx := Lean.Environment.getModuleIdx? env moduleName | throw $ IO.userError s!"main module {moduleName} not found"
+    let moduleConstNames := env.header.moduleData.get! moduleIdx |>.constNames.toList
+    onlyConstsArr := ⟨moduleConstNames⟩
 
   let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
     if !const.isImplementationDetail && !const.isCStage then acc.insert const else acc
