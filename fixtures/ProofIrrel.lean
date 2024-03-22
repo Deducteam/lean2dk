@@ -46,6 +46,8 @@ inductive Test : P → Type
 | mk : (p : P) → Test p
 inductive Test' : P → P → Type
 | mk : (p q : P) → Test' p q
+inductive Test'' : P → (P → Type) → Type
+| mk : (p : P) → (f : P → Type) → Test'' p f
 
 structure TestStruct where
 x : Type
@@ -55,6 +57,30 @@ axiom g : Test p → Type → Type
 axiom F : Type → Type
 axiom x : f (Test.mk p)
 
+theorem PatchTestApp : Test' q q' := Test'.mk p p'
+#check_l4l PITest.PatchTestApp
+
+theorem PatchTestApp' : Test' q q' :=
+  @Eq.mpr (Test' q q') (Test' p p')
+  (congr (f₁ := fun x => Test' q x) (f₂ := fun x => Test' p x)
+    (congr (f₁ := fun x => Test' x) (f₂ := fun x => Test' x) rfl (prfIrrel P q p))
+    (prfIrrel P q' p'))
+  (Test'.mk p p')
+#check_l4l PITest.PatchTestApp'
+
+theorem PatchTestLam : Test'' q (fun x => Test' q' x) := Test''.mk p (fun y => Test' p' y)
+#check_l4l PITest.PatchTestLam
+-- theorem PatchTestLam' : Test'' q (fun _ => Test' q q') := 
+--   @Eq.mpr (Test'' q (fun x => Test' q x)) (Test'' q (fun y => Test' p y))
+--   (congr (f₁ := fun x => Test' q x) (f₂ := fun x => Test' p x)
+--     (congr (f₁ := fun x => Test' x) (f₂ := fun x => Test' x) rfl (prfIrrel P q p))
+--     (prfIrrel P q' p'))
+--   (Test''.mk p (fun _ => Test' p p'))
+
+-- test for nested casts within outermost cast
+theorem PatchTestLamNested : Test'' q (fun x => f (Test.mk x)) := Test''.mk p (fun y => f (Test.mk y))
+#check_l4l PITest.PatchTestLamNested
+
 axiom InferAppArg : f (Test.mk q) -- isDefEq-calling base-case
 #check_l4l PITest.InferAppArg
 axiom InferAppArg' : F (f (Test.mk q)) -- non-base-case version
@@ -62,6 +88,8 @@ axiom InferAppArg' : F (f (Test.mk q)) -- non-base-case version
 
 axiom InferAppFun : (g (Test.mk q)) Sort
 #check_l4l PITest.InferAppFun
+
+-- TODO InferAppArg and InferAppFun with a cast on the outermost term (testing that casts preserve casted subterms)
 
 def InferLetVal : Test p := -- isDefEq-calling base-case
   let t : Test p := Test.mk q
@@ -83,8 +111,12 @@ def InferLetBod : Type :=
   f (Test.mk q)
 #check_l4l PITest.InferLetBod
 
+-- TODO InferLetVal, InferLetType and InferLetBod with a cast on the outermost term (testing that casts preserve casted subterms)
+
 noncomputable def InferLambdaDom : Type := (fun _ : f (Test.mk q) => Sort) x
 #check_l4l PITest.InferLambdaDom
+
+-- TODO version of InferLambdaDom above with dependent types
 
 noncomputable def InferLambdaBod : Type := (fun _ : Type => f (Test.mk q)) Sort
 #check_l4l PITest.InferLambdaBod
