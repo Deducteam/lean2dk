@@ -19,6 +19,8 @@ require mathlib from git
 require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "main"
 
+-- require lean4lean from "/home/rish/lean4lean/"
+
 require lean4lean from git
   "https://github.com/rish987/Lean4Lean" @ "lean2dk"
 
