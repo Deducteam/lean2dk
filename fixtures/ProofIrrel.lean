@@ -4,6 +4,9 @@ import Lean4Lean.Commands
 axiom prfIrrel (P : Prop) (p q : P) : p = q
 axiom prfIrrelHEq (P Q : Prop) (heq : P = Q) (p : Q) (q : P) : HEq p q
 
+#print Eq.refl
+#print Eq.symm
+#print Eq.trans
 -- general form, to replace term t of type T containing proof subterm p at location l that calls `isDefEqProofIrrel p q` returning true @Eq.mpr T[q@l] T (congrArg (fun x => T[x@l]) (prfIrrel P q p)) t
 
 -- def PITest1 : Test q := Test.mk p
@@ -34,36 +37,36 @@ axiom prfIrrelHEq (P Q : Prop) (heq : P = Q) (p : Q) (q : P) : HEq p q
 -- def PITest2' : ∀ (_ q : P), Test q :=
 --   fun p q => @Eq.mpr (Test q) (Test p) (congrArg (fun x => Test x) (prfIrrel P q p)) (Test.mk p)
 --
-theorem congrDepEq {A B : Type u} {U : A → Type v} {V : B → Type v}
+
+theorem congrHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   (f : (a : A) → U a) (g : (b : B) → (V b)) (a : A) (b : B)
-  (hAB : A = B) (hUV : ∀ a : A, U a = V (Eq.mp hAB a))
-  (hAUBV : ((a : A) → U a) = ((b : B) → V b)) (hUaVb : U a = V b)
-  (hfg : f = Eq.mpr hAUBV g) (hab : a = Eq.mpr hAB b)
-  : f a = Eq.mpr hUaVb (g b) := by
+  (hAB : A = B) (hUV : HEq U V) (hAUBV : ((a : A) → U a) = ((b : B) → V b))
+  (hfg : HEq f g) (hab : HEq a b)
+  : HEq (f a) (g b) := by
   subst hAB
-  have this : U = V := funext hUV
-  subst this
+  subst hUV
   subst hab
   subst hfg
   rfl
 
-theorem lambdaEq {A B : Type u} {U : A → Type v} {V : B → Type v}
+/--
+  I.e., `funextHEq`.
+-/
+theorem lambdaHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   (f : (a : A) → U a) (g : (b : B) → V b)
-  (hAB : A = B) (hUV : ∀ a : A, U a = V (Eq.mp hAB a))
-  (hAUBV : ((a : A) → U a) = ((b : B) → V b))
-  (h : ∀ a : A, f a = Eq.mpr (hUV a) (g (Eq.mp hAB a)))
-  : (fun a => f a) = Eq.mpr hAUBV (fun b => g b) := by
+  (hAB : A = B) (hUV : HEq U V)
+  (h : ∀ (a : A) (b : B), HEq a b → HEq (f a) (g b))
+  : HEq (fun a => f a) (fun b => g b) := by
   subst hAB
-  have this : U = V := funext hUV
-  subst this
-  exact funext h
+  subst hUV
+  have : f = g := funext fun a => eq_of_heq $ h a a HEq.rfl
+  exact heq_of_eq this
 
-theorem forAllEq {A B : Type u} {U : A → Type v} {V : B → Type v}
-  (hAB : A = B) (hUV : ∀ a : A, U a = V (Eq.mp hAB a))
+theorem forAllHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
+  (hAB : A = B) (hUV : HEq U V)
   : (∀ a, U a) = (∀ b, V b) := by
   subst hAB
-  have this : U = V := funext hUV
-  subst this
+  subst hUV
   rfl
 
 axiom P : Prop
