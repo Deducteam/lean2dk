@@ -9,6 +9,7 @@ lean_exe lean2dk where
   supportInterpreter := true
   root := `Main
 
+@[default_target]
 lean_lib Dedukti { roots := #[`Dedukti] }
 @[default_target]
 lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
@@ -54,23 +55,40 @@ def runCmd (cmd : String) : ScriptM $ Except String String := do
     then return .error (stdout ++ "\n" ++ stderr)
     else return .ok (stdout ++ "\n" ++ stderr)
 
+/--
+  Run all input commands, erroring if any of them fail,
+  and returning their combined output.
+-/
+def runCmds (cmds : List String) : ScriptM $ Except String String := do
+  let mut out := ""
+  for cmd in cmds do
+    let {exitCode, stderr, stdout} ← runCmd' cmd
+    if exitCode != 0
+      then return .error (out ++ stdout ++ "\n" ++ stderr)
+      else out := out ++ stdout ++ "\n" ++ stderr
+  return .ok out
+
 def argsString (args : List String) :=
   s!"{args.foldl (init := "") fun acc arg => acc ++ " " ++ arg}"
-
--- TODO can call lake exe directly, rather than through runCmd?
-script trans_only (args) do
-  IO.println "{BLUE}running translation only..."
-  let {stderr, stdout, ..} ← runCmd' s!"lake exe lean2dk{argsString args}"
-  IO.println stderr
-  IO.println stdout
-  return 1
 
 def eprintColor (color s : String) := IO.eprintln s!"{color}{s}{NOCOLOR}"
 def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
 
+-- TODO can call lake exe directly, rather than through runCmd?
+script trans_only (args) do
+  IO.println "{BLUE}running translation only..."
+  match ← runCmds ["lake build fixtures", s!"lake exe lean2dk{argsString args}"] with
+  | .error e => eprintColor LIGHT_GRAY e; return 1
+  | .ok stdout =>
+    printColor NOCOLOR stdout
+    -- printCmd "echo ---------------- out.dk"
+    -- printCmd "cat dk/out.dk"
+    -- printCmd "echo ----------------"
+  return 1
+
 script trans (args) do
   printColor BLUE "running translation + check..."
-  match ← runCmd s!"lake exe lean2dk{argsString args}" with
+  match ← runCmds ["lake build fixtures", s!"lake exe lean2dk{argsString args}"] with
   | .error e => eprintColor LIGHT_GRAY e; return 1
   | .ok stdout =>
     printColor NOCOLOR stdout
