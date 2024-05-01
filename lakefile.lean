@@ -9,7 +9,6 @@ lean_exe lean2dk where
   supportInterpreter := true
   root := `Main
 
-@[default_target]
 lean_lib Dedukti { roots := #[`Dedukti] }
 @[default_target]
 lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
@@ -81,9 +80,6 @@ script trans_only (args) do
   | .error e => eprintColor LIGHT_GRAY e; return 1
   | .ok stdout =>
     printColor NOCOLOR stdout
-    -- printCmd "echo ---------------- out.dk"
-    -- printCmd "cat dk/out.dk"
-    -- printCmd "echo ----------------"
   return 1
 
 script trans (args) do
@@ -92,9 +88,6 @@ script trans (args) do
   | .error e => eprintColor LIGHT_GRAY e; return 1
   | .ok stdout =>
     printColor NOCOLOR stdout
-    -- printCmd "echo ---------------- out.dk"
-    -- printCmd "cat dk/out.dk"
-    -- printCmd "echo ----------------"
     match ← runCmd "make check -sC dk" with
     | .error e => eprintColor LIGHT_GRAY e; return 1
     | .ok _ => printColor GREEN "\ntests passed!"; return 0

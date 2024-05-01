@@ -69,6 +69,23 @@ theorem forAllHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   subst hUV
   rfl
 
+theorem castHEq {A B : Type u} (a : A) (hAB : A = B)
+  : HEq (cast hAB a) a := by
+  subst hAB
+  rfl
+
+-- def ex.{u} : ∀ {A B : Type u} (a : A) (h : @Eq (Type u) A B), @Eq A (@Eq.rec (Type u) A (fun x x => A) a B h) a :=
+--    fun {A B} a h =>
+--      @Eq.ndrec (Type u) A (fun {B} => (h : A = B) → @Eq A (@Eq.rec (Type u) A (fun x x => A) a B h) a)
+--        (fun h => @Eq.refl A (@Eq.rec (Type u) A (fun x x => A) a A h)) B h h
+-- set_option pp.explicit true in
+-- #print ex
+--
+-- -- example (a b : Nat) (h : a = b)
+-- --   : Eq.rec (motive := fun _ _ => Nat) 1 h = 1 := rfl
+-- #reduce fun (A B : Prop) (h : And A B)
+--   => (And.rec (motive := fun _ => Nat) (fun _ _ => Nat.zero) h)
+
 axiom P : Prop
 axiom p : P
 axiom q : P
@@ -127,6 +144,8 @@ theorem PatchTestEtaStruct' : S.mk (S.s (S.mk p t)) (S.s' (S.mk r r')) = S.mk q 
   (congr (f₁ := fun x => S.mk (S.s (S.mk p t)) x) (f₂ := fun x => S.mk q x)
     (congr (f₁ := fun x => S.mk x) (f₂ := fun x => S.mk x) rfl (prfIrrel P p q))
     (prfIrrel P r' u))
+
+def PatchTestKLike {A : Type} (a : A) (h : Q p = Q q) : @Eq.rec _ (Q p) (fun _ _ => Type) A (Q q) h := a
 
 -- test for the propositional type having proof-irrelevant parts
 theorem PatchTestDepProp (x : QTest q Qq) : QTest p Qp := x
