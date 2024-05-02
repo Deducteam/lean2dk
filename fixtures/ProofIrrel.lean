@@ -74,22 +74,44 @@ theorem castHEq {A B : Type u} (a : A) (hAB : A = B)
   subst hAB
   rfl
 
--- def ex.{u} : ∀ {A B : Type u} (a : A) (h : @Eq (Type u) A B), @Eq A (@Eq.rec (Type u) A (fun x x => A) a B h) a :=
---    fun {A B} a h =>
---      @Eq.ndrec (Type u) A (fun {B} => (h : A = B) → @Eq A (@Eq.rec (Type u) A (fun x x => A) a B h) a)
---        (fun h => @Eq.refl A (@Eq.rec (Type u) A (fun x x => A) a A h)) B h h
--- set_option pp.explicit true in
--- #print ex
---
--- -- example (a b : Nat) (h : a = b)
--- --   : Eq.rec (motive := fun _ _ => Nat) 1 h = 1 := rfl
--- #reduce fun (A B : Prop) (h : And A B)
---   => (And.rec (motive := fun _ => Nat) (fun _ _ => Nat.zero) h)
+theorem eq_of_heq' {α : Sort u} {a a' : α} (h : HEq a a') : Eq a a' :=
+  have : (α β : Sort u) → (a : α) → (b : β) → HEq a b → (h : Eq α β) → Eq (cast h a) b :=
+    fun _ _ _ _ h₁ =>
+      h₁.rec (fun h => prfIrrel _ rfl h ▸ rfl)
+  this α α a a' h rfl
+
+inductive K : α → α → α → α → Prop where
+  | mk (a b : α) : K a b a b
+
+-- theorem KHEqAux {T : Sort u} {a b : T} (h : K a b a b) : K.mk a b = h := prfIrrel _ _ _
+-- theorem KHEq {T : Sort u} {a b : T} (hab : a = b) :
+--   (h : Eq a b) → HEq (@Eq.rec _ a (fun _ _ => Type) Prop b h) Prop := hab ▸ fun h => HEq.rfl
+
+-- theorem KHEq {T : Sort u} {a b : T}
+--   (motive : (u v : T) → K a b u v → Type v) (m : motive a b (K.mk a b))
+--   (h : K a b a b) : Eq (K.rec (motive := motive) m h) m := rfl
+
+-- theorem EqHEq {T : Sort u} {a b : T} (hab : a = b)
+--   {motive : (u : T) → Eq a u → Type v} (m : motive a (Eq.refl a)) :
+--   (h : Eq a b) → HEq (@Eq.rec _ a motive m b h) m :=
+--   hab ▸ fun h => prfIrrel _ (Eq.refl a) h ▸ HEq.rfl
+
+-- verison of eq_of_heq that does not rely on K-like reduction
+theorem KHEq {T : Sort u} {a b c d : T} (hac : a = c) (hbd : b = d)
+  {motive : (u v : T) → K a b u v → Type v} (m : motive a b (K.mk a b)) :
+  (h : K a b c d) → HEq (@K.rec _ a b motive m c d h) m :=
+  hac ▸ hbd ▸ fun h => prfIrrel _ (K.mk a b) h ▸ HEq.rfl
+
+-- #print KHEq
+
+-- theorem ex (a b : Nat) (h : K a b a b)
+--   : K.rec (motive := fun _ _ _ => Type) Nat h := cast (eq_of_heq' (KHEq (motive := fun _ _ _ => Type) rfl rfl Nat h)).symm a
 
 axiom P : Prop
 axiom p : P
 axiom q : P
 axiom r : P
+axiom s : P
 axiom t : P
 axiom u : P
 axiom r' : P
@@ -145,7 +167,7 @@ theorem PatchTestEtaStruct' : S.mk (S.s (S.mk p t)) (S.s' (S.mk r r')) = S.mk q 
     (congr (f₁ := fun x => S.mk x) (f₂ := fun x => S.mk x) rfl (prfIrrel P p q))
     (prfIrrel P r' u))
 
-def PatchTestKLike {A : Type} (a : A) (h : Q p = Q q) : @Eq.rec _ (Q p) (fun _ _ => Type) A (Q q) h := a
+def PatchTestKLike {A : Type} (a : A) (h : K (Q p) (Q q) (Q r) (Q s)) : @K.rec _ (Q p) (Q q) (fun _ _ _ => Type) A (Q r) (Q s) h := a
 
 -- test for the propositional type having proof-irrelevant parts
 theorem PatchTestDepProp (x : QTest q Qq) : QTest p Qp := x
