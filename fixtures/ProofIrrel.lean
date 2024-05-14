@@ -38,7 +38,7 @@ axiom prfIrrelHEq (P Q : Prop) (heq : P = Q) (p : Q) (q : P) : HEq p q
 --   fun p q => @Eq.mpr (Test q) (Test p) (congrArg (fun x => Test x) (prfIrrel P q p)) (Test.mk p)
 --
 
-theorem congrHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
+theorem appHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   (f : (a : A) → U a) (g : (b : B) → (V b)) (a : A) (b : B)
   (hAB : A = B) (hUV : HEq U V) (hAUBV : ((a : A) → U a) = ((b : B) → V b))
   (hfg : HEq f g) (hab : HEq a b)
@@ -55,7 +55,7 @@ theorem congrHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
 theorem lambdaHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   (f : (a : A) → U a) (g : (b : B) → V b)
   (hAB : A = B) (hUV : HEq U V)
-  (h : ∀ (a : A) (b : B), HEq a b → HEq (f a) (g b))
+  (h : (a : A) → (b : B) → HEq a b → HEq (f a) (g b))
   : HEq (fun a => f a) (fun b => g b) := by
   subst hAB
   subst hUV
@@ -64,7 +64,7 @@ theorem lambdaHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
 
 theorem forAllHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   (hAB : A = B) (hUV : HEq U V)
-  : (∀ a, U a) = (∀ b, V b) := by
+  : ((a : A) → U a) = ((b : B) → V b) := by
   subst hAB
   subst hUV
   rfl
@@ -74,14 +74,14 @@ theorem castHEq {A B : Type u} (a : A) (hAB : A = B)
   subst hAB
   rfl
 
+-- verison of eq_of_heq that does not rely on proof-irrelevance
 theorem eq_of_heq' {α : Sort u} {a a' : α} (h : HEq a a') : Eq a a' :=
   have : (α β : Sort u) → (a : α) → (b : β) → HEq a b → (h : Eq α β) → Eq (cast h a) b :=
     fun _ _ _ _ h₁ =>
       h₁.rec (fun h => prfIrrel _ rfl h ▸ rfl)
   this α α a a' h rfl
 
-inductive K : α → α → α → α → Prop where
-  | mk (a b : α) : K a b a b
+def cast' (A B : Sort u) (h : HEq A B) (a : A) : B := cast (eq_of_heq' h) a
 
 -- theorem KHEqAux {T : Sort u} {a b : T} (h : K a b a b) : K.mk a b = h := prfIrrel _ _ _
 -- theorem KHEq {T : Sort u} {a b : T} (hab : a = b) :
@@ -96,11 +96,44 @@ inductive K : α → α → α → α → Prop where
 --   (h : Eq a b) → HEq (@Eq.rec _ a motive m b h) m :=
 --   hab ▸ fun h => prfIrrel _ (Eq.refl a) h ▸ HEq.rfl
 
--- verison of eq_of_heq that does not rely on K-like reduction
-theorem KHEq {T : Sort u} {a b c d : T} (hac : a = c) (hbd : b = d)
+inductive K : α → α → α → α → Prop where
+  | mk (a b : α) : K a b a b
+
+theorem KRedKLike {T : Sort u} {a b c d : T} (hac : a = c) (hbd : b = d)
   {motive : (u v : T) → K a b u v → Type v} (m : motive a b (K.mk a b)) :
   (h : K a b c d) → HEq (@K.rec _ a b motive m c d h) m :=
   hac ▸ hbd ▸ fun h => prfIrrel _ (K.mk a b) h ▸ HEq.rfl
+#check_l4l KRedKLike
+
+-- structure S (a b : α) : Type where
+-- x : Nat
+-- y : Nat
+
+inductive S (a b : α) : Type where
+| mk : Nat → Nat → S a b
+
+noncomputable def S.x (s : S a b) : Nat := s.rec fun x _ => x
+noncomputable def S.y (s : S a b) : Nat := s.rec fun _ y => y
+
+theorem SEtaAux {T : Sort u} {a b : T} (s : S a b) : s = S.mk s.x s.y := s.rec (motive := fun s => s = S.mk s.x s.y) fun _ _ => rfl
+#check_l4l SEtaAux
+
+theorem SRedEta {T : Sort u} {a b : T}
+  {motive : S a b → Type v} (m : (x y : Nat) → motive (S.mk x y)) (s : S a b) :
+  HEq (@S.rec _ a b motive m s) (m s.x s.y) := Eq.rec (motive := fun s _ => HEq (@S.rec _ a b motive m s) (m s.x s.y)) (HEq.refl _) (SEtaAux s).symm
+#check_l4l SRedEta
+
+-- theorem ex
+--   (a b c : Nat) (hab : a = b) :
+--   (h : a = b) → (@Eq.rec _ a (fun _ _ => Nat) c b h) = c :=
+--   hab ▸ fun _ => rfl
+--
+-- theorem ex' (a b c : Nat) (hab : a = b) : (h : a = b) → (@Eq.rec _ a (fun _ _ => Nat) c b h) = c :=
+--      @Eq.rec Nat a (fun x h => ∀ (h : @Eq Nat a x), @Eq Nat (@Eq.rec Nat a (fun x x => Nat) c x h) c)
+--        (fun x => @rfl Nat (@Eq.rec Nat a (fun x x => Nat) c a (Eq.refl a))) b hab
+--
+-- set_option pp.explicit true in
+-- #print ex
 
 -- #print KHEq
 
