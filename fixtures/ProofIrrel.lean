@@ -39,8 +39,8 @@ axiom prfIrrelHEq (P Q : Prop) (heq : P = Q) (p : Q) (q : P) : HEq p q
 --
 
 theorem appHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
-  (f : (a : A) → U a) (g : (b : B) → (V b)) (a : A) (b : B)
-  (hAB : A = B) (hUV : HEq U V) (hAUBV : ((a : A) → U a) = ((b : B) → V b))
+  {f : (a : A) → U a} {g : (b : B) → V b} {a : A} {b : B}
+  (hAB : A = B) (hUV : HEq U V)
   (hfg : HEq f g) (hab : HEq a b)
   : HEq (f a) (g b) := by
   subst hAB
@@ -54,10 +54,13 @@ theorem appHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
 -/
 theorem lambdaHEq {A B : Type u} {U : A → Type v} {V : B → Type v}
   (f : (a : A) → U a) (g : (b : B) → V b)
-  (hAB : A = B) (hUV : HEq U V)
-  (h : (a : A) → (b : B) → HEq a b → HEq (f a) (g b))
+  (hAB : A = B) (h : (a : A) → (b : B) → HEq a b → HEq (f a) (g b))
   : HEq (fun a => f a) (fun b => g b) := by
   subst hAB
+  have hUV : Eq U V := by
+    apply funext
+    intro x
+    exact type_eq_of_heq (h x x HEq.rfl)
   subst hUV
   have : f = g := funext fun a => eq_of_heq $ h a a HEq.rfl
   exact heq_of_eq this
@@ -99,22 +102,20 @@ def cast' (A B : Sort u) (h : HEq A B) (a : A) : B := cast (eq_of_heq' h) a
 inductive K : α → α → α → α → Prop where
   | mk (a b : α) : K a b a b
 
+-- theorem KLikeAux {T : Sort u} {a b c d : T} (hK : K a b c d = K a b a b) :
+--   (h : K a b c d) → HEq h (K.mk a b) :=
+--   hK.symm.rec (motive := fun X _ => (h : X) → HEq h (K.mk a b)) fun h => h.rec (motive := fun _ _ h => HEq h (K.mk a b)) HEq.rfl
+-- #check_l4l KLikeAux
+
 theorem KRedKLike {T : Sort u} {a b c d : T} (hac : a = c) (hbd : b = d)
   {motive : (u v : T) → K a b u v → Type v} (m : motive a b (K.mk a b)) :
   (h : K a b c d) → HEq (@K.rec _ a b motive m c d h) m :=
   hac ▸ hbd ▸ fun h => prfIrrel _ (K.mk a b) h ▸ HEq.rfl
 #check_l4l KRedKLike
 
--- structure S (a b : α) : Type where
--- x : Nat
--- y : Nat
-
-inductive S (a b : α) : Type where
-| mk : Nat → Nat → S a b
-
-noncomputable def S.x (s : S a b) : Nat := s.rec fun x _ => x
-noncomputable def S.y (s : S a b) : Nat := s.rec fun _ y => y
-
+structure S (a b : α) : Type where
+x : Nat
+y : Nat
 theorem SEtaAux {T : Sort u} {a b : T} (s : S a b) : s = S.mk s.x s.y := s.rec (motive := fun s => s = S.mk s.x s.y) fun _ _ => rfl
 #check_l4l SEtaAux
 
@@ -175,6 +176,10 @@ structure S where
 s : P
 s' : P
 
+structure ST where
+x : Nat
+y : Nat
+
 def TestDef : P → Type := fun p => Test p
 def TestMkDef : (p : P) → TestDef p := fun p => Test.mk p
 
@@ -194,13 +199,43 @@ axiom depCongr.{u, v}
   : HEq (f₁ a₁) (f₂ a₂)
 axiom congr'.{u, v} {α : Sort u} {β : α → Sort v} {f₁ f₂ : (a : α) → β a} {a₁ a₂ : α} (h₁ : f₁ = f₂) (h₂ : a₁ = a₂) : HEq (f₁ a₁) (f₂ a₂)
 
-theorem PatchTestEtaStruct : S.mk (S.s (S.mk p t)) (S.s' (S.mk r r')) = S.mk q u := rfl
-theorem PatchTestEtaStruct' : S.mk (S.s (S.mk p t)) (S.s' (S.mk r r')) = S.mk q u := 
+theorem PatchTestStructEta : S.mk (S.s (S.mk p t)) (S.s' (S.mk r r')) = S.mk q u := rfl
+theorem PatchTestStructEta' : S.mk (S.s (S.mk p t)) (S.s' (S.mk r r')) = S.mk q u := 
   (congr (f₁ := fun x => S.mk (S.s (S.mk p t)) x) (f₂ := fun x => S.mk q x)
     (congr (f₁ := fun x => S.mk x) (f₂ := fun x => S.mk x) rfl (prfIrrel P p q))
     (prfIrrel P r' u))
 
+axiom hK : K (Q p) (Q q) (Q r) (Q s)
+
+noncomputable def KLikeRedTo {A : Sort u} (a : A) : A := @K.rec _ (Q p) (Q q) (fun _ _ _ => A) a (Q r) (Q s) hK
+
 def PatchTestKLike {A : Type} (a : A) (h : K (Q p) (Q q) (Q r) (Q s)) : @K.rec _ (Q p) (Q q) (fun _ _ _ => Type) A (Q r) (Q s) h := a
+#check_l4l PITest.PatchTestKLike
+
+def PatchTestStructEtaRed {A : Type} (a : A) (h : K (Q p) (Q q) (Q r) (Q s)) (s : @K.rec _ (Q p) (Q q) (fun _ _ _ => Type) S (Q r) (Q s) h) : (@S.rec (fun _ => Type) (fun _ _ => A) s) := a
+#check_l4l PITest.PatchTestStructEtaRed
+
+def PatchTestEtaExp {A : Type} (f : KLikeRedTo (A → Type)) : (fun a => f a) = f := rfl
+#check_l4l PITest.PatchTestEtaExp
+
+def PatchProjStructWHNF (h : K p q r s) : 
+  (ST.x (@K.rec _ p q (fun _ _ _ => ST) (ST.mk 0 1) r s h)) = 0 := rfl
+#check_l4l PITest.PatchProjStructWHNF
+
+axiom T : KLikeRedTo Sort 
+axiom T' : Q p → KLikeRedTo Sort 
+
+def PatchTestInferLambda (_ : T' Qq) : Sort := T' Qq
+#check_l4l PITest.PatchTestInferLambda
+
+def PatchTestInferForall : Sort := (_ : T' Qq) -> T
+#check_l4l PITest.PatchTestInferForall
+
+inductive Unit : Type where
+| mk : Unit
+
+example (h : K p q r s) (st : ST) : 
+  (ST.x (@K.rec _ p q (fun _ _ _ => ST) st r s h)) = st.x := rfl
 
 -- test for the propositional type having proof-irrelevant parts
 theorem PatchTestDepProp (x : QTest q Qq) : QTest p Qp := x
@@ -219,8 +254,8 @@ theorem PatchTestDepProp' (x : QTest q Qq) : QTest p Qp :=
 #check_l4l PITest.PatchTestDepProp
 #check_l4l PITest.PatchTestDepProp'
 
-#check_l4l PITest.PatchTestEtaStruct
-#check_l4l PITest.PatchTestEtaStruct'
+#check_l4l PITest.PatchTestStructEta
+#check_l4l PITest.PatchTestStructEta'
 
 theorem PatchTestWhnf : TestDef q := TestMkDef p
 #check_l4l PITest.PatchTestWhnf
