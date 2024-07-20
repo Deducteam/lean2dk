@@ -14,6 +14,33 @@ inductive Nat : Type where
   | zero : Nat
   | succ : Nat → Nat
 
+axiom P : Prop
+axiom p : P
+axiom q : P
+
+axiom T : P → Type
+
+def ex (t : T p) : T q := t
+
+#check Nat.rec
+-- Nat.rec.{u} {motive : Nat → Sort u}
+--   (zero : motive Nat.zero) (succ : (a : Nat) → motive a → motive (Nat.succ a))
+--   (t : Nat) : motive t
+
+noncomputable def decrement (n : Nat) : Nat :=
+Nat.rec (motive := fun _ => Nat) Nat.zero (fun n _ => n) n
+
+-- `decrement (Nat.succ Nat.zero)` is defeq to `Nat.zero`
+#reduce decrement (Nat.succ Nat.zero) -- Nat.zero
+
+inductive Acc {α : Sort u} (r : α → α → Prop) : α → Prop where
+  | intro (x : α) (h : (y : α) → r y x → Acc r y) : Acc r x
+
+#check Acc.rec
+-- Acc.rec.{u, v} {α : Sort v} {r : α → α → Prop} {motive : (a : α) → Acc r a → Sort u}
+--   (intro : (x : α) → (h : ∀ (y : α), r y x → Acc r y) → ((y : α) → (a : r y x) → motive y ⋯) → motive x ⋯) 
+--   {a✝ : α} (t : Acc r a✝) : motive a✝ t
+
 inductive Unit : Prop where
   | mk : Unit
 
@@ -39,6 +66,10 @@ inductive UDep : (n : Nat) → UnitDep n → Prop where
 inductive Vec : Unit → Type where
   | nil : Vec Unit.mk
   | cons : Vec u → Nat → Vec u
+
+inductive Vec' : Nat → Type where
+  | nil : Vec' Nat.zero
+  | cons : (n : Nat) → Vec' (Nat.succ n)
 
 -- #print UDep.rec
 -- #print U.rec
