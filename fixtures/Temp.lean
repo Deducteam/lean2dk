@@ -93,13 +93,14 @@ theorem congrDep
   subst hfg
   rfl
 
-theorem ex (x : X p tp) : X q tq :=
+def ex (x : X p tp) : X q tq :=
   @Eq.mp (X p tp) (X q tq)
   (congrDepEq (X p) (X q) tp tq hTpq (fun _ => rfl) hTpq0 rfl
   (congrDepEq X X p q rfl (fun _ => rfl) rfl hTpq0 rfl hpq)
   htpq)
   x
-#check_l4l ex
+
+-- #check_l4l ex
 
 #print Eq.ndrec
 set_option pp.all true

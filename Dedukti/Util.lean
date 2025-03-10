@@ -16,4 +16,4 @@ def fixLeanName' : Name → Name
 | .anonymous => .anonymous
 
 def fixLeanName (n : Name) : Name :=
-  fixLeanName' n |>.toStringWithSep "_" false
+  fixLeanName' n |>.toStringWithSep "_" false |>.toName

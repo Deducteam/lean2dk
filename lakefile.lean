@@ -13,16 +13,16 @@ lean_lib Dedukti { roots := #[`Dedukti] }
 @[default_target]
 lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
 
-require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.7.0-rc2"
+-- require mathlib from git
+--   "https://github.com/leanprover-community/mathlib4" @ "v4.18.0-rc1"
 
 require Cli from git
-  "https://github.com/leanprover/lean4-cli" @ "main"
+  "https://github.com/leanprover/lean4-cli" @ "v4.18.0-rc1"
 
--- require lean4lean from "/home/rish/lean4lean/"
+-- require lean4lean from "/home/rvaishna/projects/lean4lean/"
 
 require lean4lean from git
-  "https://github.com/rish987/Lean4Lean" @ "lean2dk"
+  "https://github.com/rish987/Lean4Lean" @ "update-tc"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "
@@ -105,6 +105,8 @@ script check do
   | .ok o =>
     printColor LIGHT_GRAY o
     printColor GREEN "tests passed!"; return 0
+
+open System
 
 partial def getFilePaths (fp : FilePath) (ext : String) (acc : Array FilePath := #[]) :
     IO $ Array FilePath := do

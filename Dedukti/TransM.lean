@@ -16,9 +16,9 @@ structure Context where
   numLets    : Nat := 0
   env : Lean.Environment
   fvars     : Array Lean.Expr := default
-  fvarTypes : Std.RBMap Name Expr compare := default
-  lvars     : Std.RBMap Name (Nat × Name) compare := default
-  lvlParams : Std.RBMap Name Nat compare := default
+  fvarTypes : Lean.RBMap Name Expr compare := default
+  lvars     : Lean.RBMap Name (Nat × Name) compare := default
+  lvlParams : Lean.RBMap Name Nat compare := default
 
 structure State where
   env        : Env := default
@@ -51,16 +51,16 @@ def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }
 
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
-  let lvlParams ← params.length.foldM (init := default) fun i curr =>  
+  let lvlParams ← params.length.foldM (init := default) fun i _ curr =>  
     pure $ curr.insert params[i]! i
   withReader (fun ctx => { ctx with lvlParams }) m
 
-def withFVars (fvarTypes : Std.RBMap Name Expr compare) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
+def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   let newFvars := (← read).fvars.append fvars
-  let newFvarTypes := (← read).fvarTypes.mergeWith (fun _ _ t => t) fvarTypes
+  let newFvarTypes := (← read).fvarTypes.mergeBy (fun _ _ t => t) fvarTypes
   withReader (fun ctx => { ctx with fvarTypes := newFvarTypes, fvars := newFvars }) m
 
-def nextLetName : TransM Name := do pure $ fixLeanName $ ((← read).constName).toString false ++ "_let" ++ (toString (← read).numLets)
+def nextLetName : TransM Name := do pure $ fixLeanName $ ((← read).constName).toString false ++ "_let" ++ (toString (← read).numLets) |>.toName
 
 def withLet (varName : Name) (m : TransM α) : TransM α := do
   let lvars := (← read).lvars.insert varName ((← read).fvars.size, ← nextLetName)

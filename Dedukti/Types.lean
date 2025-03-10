@@ -1,5 +1,5 @@
 import Lean
-import Std.Data.RBMap
+import Lean.Data.RBMap
 
 notation "Name" => Lean.Name
 
@@ -49,7 +49,7 @@ def appN (head : Expr) (params : List Expr) : Expr :=
 end Expr
 
 structure Env where
-  constMap : Std.RBMap Name Const compare
+  constMap : Lean.RBMap Name Const compare
   deriving Inhabited
 
 end Dedukti

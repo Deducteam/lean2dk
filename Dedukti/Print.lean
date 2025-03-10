@@ -55,7 +55,7 @@ structure PrintCtx where
     Names of constants whose types are waiting to be printed;
     any rewrite rules that reference these constants should have their printing delayed.
   -/
-  pendingTypes : Std.RBSet Name compare := default
+  pendingTypes : Std.HashSet Name := default
   /--
     If currently printing a rule, set to the name of the constant this rule comes from;
     any referenced pending types will be kept track of to delay printing this rule until after they are all printed.
@@ -68,28 +68,28 @@ structure PrintCtx where
   deriving Inhabited
   
 structure PrintState where
-  printedConsts   : Std.RBMap Name String compare := default
+  printedConsts : Lean.RBMap Name String compare := default
   /--
     Keeps track of whether any of the rules corresponding to a constant referenced any pending types;
     if so, printing of these rules is delayed until after those types have been printed.
     TODO: is it necessary to do this per-rule, instead of per-definable-constant?
   -/
-  rulePendingTypesRefs : Std.RBMap Name (Std.RBSet Name compare) compare := default
+  rulePendingTypesRefs : Lean.RBMap Name (Std.HashSet Name) compare := default
   /--
     Stores the names of other unprinted constants referenced by a constant's rewrite rules.
   -/
-  ruleTypesRefs : Std.RBMap Name (Std.RBSet Name compare) compare := default
+  ruleTypesRefs : Lean.RBMap Name (Std.HashSet Name) compare := default
   /--
     Stores the names of other unprinted constants referenced by a constant's type.
     If there are any such constants, printing of this constant's rules will be delayed until
     after all of these referenced constants have had their rules printed.
   -/
-  typeTypesRefs : Std.RBMap Name (Std.RBSet Name compare) compare := default
+  typeTypesRefs : Lean.RBMap Name (Std.HashSet Name) compare := default
   /--
     Rules that are waiting to be printed as soon as all of their pending types are printed.
   -/
-  pendingRules           : Std.RBMap Name (List String) compare := default
-  out             : List String := []
+  pendingRules : Lean.RBMap Name (List String) compare := default
+  out : List String := []
   deriving Inhabited
 
 abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
@@ -133,9 +133,9 @@ def addRefTypeInType (typeConst refTypeConst : Name) : PrintM Unit := do
 
   modify fun s => { s with typeTypesRefs := s.typeTypesRefs.insert typeConst (refSet.insert refTypeConst) }
 
-def eraseFromValues (map : Std.RBMap Name (Std.RBSet Name compare) compare) (name : Name) : Std.RBMap Name (Std.RBSet Name compare) compare :=
-  map.foldl (init := default) fun newMap thisName set => 
-    let newSet := set.erase fun n => compare name n
+def eraseFromValues (map : Lean.RBMap Name (Std.HashSet Name) compare) (name : Name) : Lean.RBMap Name (Std.HashSet Name) compare :=
+  map.fold (init := default) fun newMap thisName set => 
+    let newSet := set.erase name
     if newSet.size == 0 then
       newMap
     else

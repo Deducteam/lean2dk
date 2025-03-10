@@ -36,7 +36,6 @@ def dupParams (origParams : Array Lean.Expr) : TransM (Array (Name × Lean.Binde
     let paramType ← inferType param
     pure $ x.append #[(default, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)] -- FIXME do I need to generate unique names here? e.g. param.fvarId!.name ++ `New
 
-
 mutual
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
@@ -54,7 +53,7 @@ mutual
                                 domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
                                   pure (.lam curr)
     | e@(.forallE ..) => forallTelescope e fun domVars img => do
-                                let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromInferredType img)) fun i (curr, s2) => do
+                                let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromInferredType img)) fun i _ (curr, s2) => do
                                   let domVar := domVars[i]!
                                   let dom ← inferType domVar
                                   let s1 ← levelFromInferredType dom
@@ -72,7 +71,7 @@ mutual
           let name := fvar.fvarId!.name
           let some dom ← do pure $ (← read).fvarTypes.find? name | tthrow s!"could not find type of free variable"
           pure $ .pi dom acc
-        let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
+        let type := (← read).lvlParams.revFold (init := type) fun curr _ _ => .pi (.const `lvl.Lvl) curr
 
         let val ← fromExpr val
         let letName ← nextLetName
@@ -80,7 +79,7 @@ mutual
         let numLevels := (← read).lvlParams.size
         let numVars := numLevels + fvars.length
 
-        let levels := numLevels.fold (init := []) fun i acc => [.var (i + fvars.length)] ++ acc
+        let levels := numLevels.fold (init := []) fun i _ acc => [.var (i + fvars.length)] ++ acc
         let lhs := (.appN (.const letName) (levels ++ (← fvars.mapM (fun fvar => fromExpr fvar))))
 
         -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
@@ -122,7 +121,7 @@ mutual
   withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← read).constName
     let type ← fromExprAsType cnst.type
-    let type := (← read).lvlParams.foldr (init := type) fun _ _ curr => .pi (.const `lvl.Lvl) curr
+    let type := (← read).lvlParams.revFold (init := type) fun curr _ _ => .pi (.const `lvl.Lvl) curr
     match cnst with
     | .axiomInfo    (_ : Lean.AxiomVal) => pure $ .static name type
     | .defnInfo     (val : Lean.DefinitionVal)
@@ -149,7 +148,7 @@ mutual
       else
         let value ← fromExpr val.value
         -- let value ← fromExpr $ ← reduceAll val.value -- FIXME use this version (mainly to shorten output code) once implemented subsingleton elimination (for the moment e.g. Unit.recOn is problematic)
-        let value := (← read).lvlParams.foldr (init := value) fun _ _ curr => .lam curr
+        let value := (← read).lvlParams.revFold (init := value) fun curr _ _ => .lam curr
         pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (_ : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) =>

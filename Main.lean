@@ -71,7 +71,7 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
     if !const.isImplementationDetail && !const.isCStage then acc.insert const else acc
 
-  let onlyConsts ← Lean4Lean.checkConstants env onlyConstsInit (printErr := true)
+  let (onlyConsts, _) ← Lean4Lean.checkConstants env onlyConstsInit Lean4Lean.addDecl (printErr := true) (overrides := default)
 
   let ignoredConsts := onlyConstsInit.diff onlyConsts
   if ignoredConsts.size > 0 then
