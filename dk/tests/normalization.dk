@@ -1,67 +1,67 @@
-def test1  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.s lvl.z))).
+def test1  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (lvl.var (nat.z) x)) (lvl.s (lvl.s lvl.z))) (enc.Sort (lvl.max (lvl.var (nat.z) x) (lvl.s lvl.z))).
 def test1' := x:lvl.Lvl =>
   enc.Univ
     (normalize.maxS
        (sublvl.cons
-          (sublvl.a (lvl.cons x lvl.nil) x nat.z)
-          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+          (sublvl.a (nat.cons nat.z nat.nil) nat.z nat.z)
+          (sublvl.cons (sublvl.b nat.nil (nat.s nat.z)) sublvl.nil))).
 #PRINT "test1 == test1'?".
 #ASSERT test1 == test1'.
 #CHECK test1 == test1'.
 
-def test11 := x:lvl.Lvl => (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.s (lvl.z)))).
+def test11 := x:lvl.Lvl => (lvl.max (lvl.s (lvl.var nat.z x)) (lvl.s (lvl.s (lvl.z)))).
 def test11' := x:lvl.Lvl =>
   normalize.maxS
     (sublvl.cons
-       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-       (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
+       (sublvl.a (nat.cons nat.z nat.nil) nat.z (nat.s nat.z))
+       (sublvl.cons (sublvl.b nat.nil (nat.s (nat.s nat.z))) sublvl.nil)).
 #PRINT "test11 == test11'?".
 #ASSERT test11 == test11'.
 #CHECK test11 == test11'.
 
-def test12 := x:lvl.Lvl => (lvl.s (lvl.max (normalize.var x) (lvl.s (lvl.z)))).
+def test12 := x:lvl.Lvl => (lvl.s (lvl.max (lvl.var nat.z x) (lvl.s (lvl.z)))).
 def test12' := x:lvl.Lvl =>
   normalize.maxS
     (sublvl.cons
-       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-       (sublvl.cons (sublvl.b lvl.nil (nat.s (nat.s nat.z))) sublvl.nil)).
+       (sublvl.a (nat.cons nat.z nat.nil) nat.z (nat.s nat.z))
+       (sublvl.cons (sublvl.b nat.nil (nat.s (nat.s nat.z))) sublvl.nil)).
 #PRINT "test12 == test12'?".
 #ASSERT test12 == test12'.
 #CHECK test12 == test12'.
 
-def test2  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (normalize.var x)) ((lvl.s lvl.z))) (enc.Sort (lvl.max (normalize.var x) (lvl.z))).
-def test2' := x:lvl.Lvl => enc.Univ (normalize.maxS (sublvl.cons (sublvl.a (lvl.cons x lvl.nil) x nat.z) sublvl.nil)).
+def test2  := x:lvl.Lvl => enc.El (lvl.max (lvl.s (lvl.var nat.z x)) ((lvl.s lvl.z))) (enc.Sort (lvl.max (lvl.var nat.z x) (lvl.z))).
+def test2' := x:lvl.Lvl => enc.Univ (normalize.maxS (sublvl.cons (sublvl.a (nat.cons nat.z nat.nil) nat.z nat.z) sublvl.nil)).
 #PRINT "test2 == test2'?".
 #ASSERT test2 == test2'.
 #CHECK test2 == test2'.
 
-def test21 := x:lvl.Lvl => (lvl.max (lvl.s (normalize.var x)) (lvl.s (lvl.z))).
+def test21 := x:lvl.Lvl => (lvl.max (lvl.s (lvl.var nat.z x)) (lvl.s (lvl.z))).
 def test21' := x:lvl.Lvl =>
   normalize.maxS
     (sublvl.cons
-       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-       (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
+       (sublvl.a (nat.cons nat.z nat.nil) nat.z (nat.s nat.z))
+       (sublvl.cons (sublvl.b nat.nil (nat.s nat.z)) sublvl.nil)).
 #PRINT "test21 == test21'?".
 #ASSERT test21 == test21'.
 #CHECK test21 == test21'.
 
-def test22 := x:lvl.Lvl => (lvl.s (lvl.max (normalize.var x) lvl.z)).
+def test22 := x:lvl.Lvl => (lvl.s (lvl.max (lvl.var nat.z x) lvl.z)).
 def test22' := x:lvl.Lvl =>
   normalize.maxS
     (sublvl.cons
-       (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-       (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil)).
+       (sublvl.a (nat.cons nat.z nat.nil) nat.z (nat.s nat.z))
+       (sublvl.cons (sublvl.b nat.nil (nat.s nat.z)) sublvl.nil)).
 #PRINT "test22 == test22'?".
 #ASSERT test22 == test22'.
 #CHECK test22 == test22'.
 
-def test31 := x:lvl.Lvl => enc.Univ (lvl.s (normalize.var x)).
+def test31 := x:lvl.Lvl => enc.Univ (lvl.s (lvl.var nat.z x)).
 def test31' := x:lvl.Lvl =>
   enc.Univ
     (normalize.maxS
        (sublvl.cons
-          (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+          (sublvl.a (nat.cons nat.z nat.nil) nat.z (nat.s nat.z))
+          (sublvl.cons (sublvl.b nat.nil (nat.s nat.z)) sublvl.nil))).
 #PRINT "test22 == test22'?".
 #ASSERT test22 == test22'.
 #CHECK test22 == test22'.
@@ -69,62 +69,62 @@ def test31' := x:lvl.Lvl =>
 def test3 := x:lvl.Lvl =>
   enc.Univ
     (lvl.imax
-       (lvl.s (normalize.var x))
-       (lvl.imax (normalize.var x) (lvl.imax (normalize.var x) (lvl.s lvl.z)))).
+       (lvl.s (lvl.var nat.z x))
+       (lvl.imax (lvl.var nat.z x) (lvl.imax (lvl.var nat.z x) (lvl.s lvl.z)))).
 def test3' := x:lvl.Lvl =>
   enc.Univ
     (normalize.maxS
        (sublvl.cons
-          (sublvl.a (lvl.cons x lvl.nil) x (nat.s nat.z))
-          (sublvl.cons (sublvl.b lvl.nil (nat.s nat.z)) sublvl.nil))).
+          (sublvl.a (nat.cons nat.z nat.nil) nat.z (nat.s nat.z))
+          (sublvl.cons (sublvl.b nat.nil (nat.s nat.z)) sublvl.nil))).
 #PRINT "test3 == test3'?".
 #ASSERT test3 == test3'.
 #CHECK test3 == test3'.
 
 
-(; multiple universe variables; AC of sublevel lists ;)
+(; multiple universe variables; sorting of sublevel lists ;)
 def test4 := x:lvl.Lvl => y:lvl.Lvl =>
-  enc.Univ (lvl.max (normalize.var y) (normalize.var x)).
+  enc.Univ (lvl.max (lvl.var (nat.s nat.z) y) (lvl.var nat.z x)).
 def test4' := x:lvl.Lvl => y:lvl.Lvl =>
   enc.Univ
     (normalize.maxS
        (sublvl.cons
-          (sublvl.a (lvl.cons x lvl.nil) x nat.z)
-          (sublvl.cons (sublvl.a (lvl.cons y lvl.nil) y nat.z) sublvl.nil))).
+          (sublvl.a (nat.cons nat.z nat.nil) nat.z nat.z)
+          (sublvl.cons (sublvl.a (nat.cons (nat.s nat.z) nat.nil) (nat.s nat.z) nat.z) sublvl.nil))).
 #PRINT "test4 == test4'?".
 #ASSERT test4 == test4'.
 #CHECK test4 == test4'.
 
-(; multiple universe variables; AC of level lists ;)
+(; multiple universe variables; sorting of level lists ;)
 def test5 := x:lvl.Lvl => y:lvl.Lvl =>
-  enc.Univ (lvl.imax (lvl.imax (lvl.s (lvl.s lvl.z)) (normalize.var y)) (normalize.var x)).
+  enc.Univ (lvl.imax (lvl.imax (lvl.s (lvl.s lvl.z)) (lvl.var (nat.s nat.z) y)) (lvl.var nat.z x)).
 def test5' := x:lvl.Lvl => y:lvl.Lvl =>
   enc.Univ
     (normalize.maxS
       (sublvl.cons
-        (sublvl.b (lvl.cons y (lvl.cons x lvl.nil)) (nat.s (nat.s nat.z)))
+        (sublvl.a (nat.cons nat.z nat.nil) nat.z nat.z)
       (sublvl.cons
-        (sublvl.a (lvl.cons y (lvl.cons x lvl.nil)) y nat.z)
+        (sublvl.a (nat.cons nat.z (nat.cons (nat.s nat.z) nat.nil)) (nat.s nat.z) nat.z)
       (sublvl.cons
-        (sublvl.a (lvl.cons x lvl.nil) x nat.z)
+        (sublvl.b (nat.cons nat.z (nat.cons (nat.s nat.z) nat.nil)) (nat.s (nat.s nat.z)))
       sublvl.nil)))).
 #PRINT "test5 == test5'?".
 #ASSERT test5 == test5'.
 #CHECK test5 == test5'.
 
-(; #EVAL u:lvl.Lvl => v:lvl.Lvl => w:lvl.Lvl => lvl.s (lvl.imax (lvl.imax (normalize.var u) (normalize.var v)) (lvl.imax (lvl.imax (normalize.var u) (normalize.var v)) (normalize.var w))). ;)
+(; #EVAL u:lvl.Lvl => v:lvl.Lvl => w:lvl.Lvl => lvl.s (lvl.imax (lvl.imax (lvl.var nat.z u) (lvl.var nat.z v)) (lvl.imax (lvl.imax (lvl.var nat.z u) (lvl.var nat.z v)) (lvl.var nat.z w))). ;)
 
 (;
-Unit : u:lvl.Lvl -> (enc.Univ (normalize.var u)).
-Unit_ctor : u:lvl.Lvl -> enc.El (normalize.var u) (Unit (normalize.var u)).
+Unit : u:lvl.Lvl -> (enc.Univ (lvl.var nat.z u)).
+Unit_ctor : u:lvl.Lvl -> enc.El (lvl.var nat.z u) (Unit (lvl.var nat.z u)).
 def Unit_rec :
     u      : lvl.Lvl ->
-    motive : (enc.El (normalize.var u) (Unit (normalize.var u)) -> enc.Univ lvl.z) ->
-    out    : (enc.El lvl.z (motive (Unit_ctor (normalize.var u)))) ->
-    x      : (enc.El (normalize.var u) (Unit (normalize.var u))) ->
+    motive : (enc.El (lvl.var nat.z u) (Unit (lvl.var nat.z u)) -> enc.Univ lvl.z) ->
+    out    : (enc.El lvl.z (motive (Unit_ctor (lvl.var nat.z u)))) ->
+    x      : (enc.El (lvl.var nat.z u) (Unit (lvl.var nat.z u))) ->
     enc.El lvl.z (motive x).
 
-#EVAL x: sublvl.Set => normalize.var (normalize.maxS x).
+#EVAL x: sublvl.Set => lvl.var nat.z (normalize.maxS x).
 
 [u, motive, out] Unit_rec (normalize.maxS u) motive out (Unit_ctor (normalize.maxS u)) --> out.
 ;)

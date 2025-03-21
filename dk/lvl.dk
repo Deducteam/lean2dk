@@ -4,54 +4,5 @@ def z: Lvl.
 def s: Lvl -> Lvl.
 def max: Lvl -> Lvl -> Lvl.
 def imax: Lvl -> Lvl -> Lvl.
-
-Set: Type.
-nil: Set.
-singleton: Lvl -> Set.
-defac union [Set].
-def cons: Lvl -> Set -> Set.
-[l, s] cons s l --> union (singleton s) l.
-
-
-
-
-sSet: Type. (; set of sets type ;)
-snil: sSet.
-def scons: Set -> sSet -> sSet.
-
-def sunion : Set -> sSet -> sSet. (; `sunion s l` is s unioned with each set in l ;)
-[] sunion _ snil --> snil.
-[s, s', l] sunion s (scons s' l) --> (scons (union s s') (sunion s l)).
-
-def smerge : sSet -> sSet -> sSet.
-[l] smerge snil l --> l.
-[s, l, l'] smerge (scons s l) l' --> scons s (smerge l l').
-
-def sunionboth : sSet -> sSet -> sSet.
-[] sunionboth snil _ --> snil.
-[s, l, l'] sunionboth (scons s l) l' --> smerge (sunion s l') (sunionboth l l').
-
-multi: sSet -> Set.
-
-[l, l'] scons (multi l') l --> smerge l' l.
-
-def msunion : Set -> sSet -> Set.
-[s, l] msunion s l --> multi (sunion s l).
-
-[l, lvl] union (singleton lvl) (multi l) --> msunion (singleton lvl) l.
-[l, s, s'] union (union s s') (multi l) --> msunion (union s s') l.
-[l] union nil (multi l) --> msunion nil l.
-
-[l, lvl] union (multi l) (singleton lvl) --> msunion (singleton lvl) l.
-[l, s, s'] union (multi l) (union s s') --> msunion (union s s') l.
-[l] union (multi l) nil --> msunion nil l.
-
-[l, l'] union (multi l) (multi l') --> multi (sunionboth l l').
-
-def iteset: bool.Bool -> Set -> Set -> Set.
-[n] iteset bool.true n _ --> n.
-[n] iteset bool.false _ n --> n.
-
-(; remove duplicates (e.g. duplicate level variables, nils) ;)
-[l, s] union l (union l s) --> union l s.
-[] union nil nil --> nil.
+def var: nat.Nat -> Lvl -> Lvl.
+def inst: Lvl -> Lvl.

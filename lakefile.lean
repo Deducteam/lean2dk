@@ -19,10 +19,19 @@ lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
 require Cli from git
   "https://github.com/leanprover/lean4-cli" @ "v4.18.0-rc1"
 
--- require lean4lean from "/home/rvaishna/projects/lean4lean/"
+inductive L' where
+| im (a b : L') : L'
+| m (a b : L') : L'
+| z : L'
+| s : L' -> L'
+| p : String -> L' -> L'
+| inst : L' -> L'
+#check L'.rec
 
-require lean4lean from git
-  "https://github.com/rish987/Lean4Lean" @ "update-tc"
+require lean4lean from "/home/rvaishna/projects/lean4lean/"
+
+-- require lean4lean from git
+--   "https://github.com/rish987/Lean4Lean" @ "update-tc"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "

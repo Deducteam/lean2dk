@@ -44,7 +44,10 @@ mutual
       if (← read).transDeps then
         transNamedConst name
       -- dbg_trace s!"translating const {name} with levels: {lvls} --> {repr $ ← lvls.mapM fromLevel}"
-      pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fromLevel))
+      pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fun lvl => do
+          let l ← fromLevel' lvl
+          (l.inst).toExpr
+        ))
     | e@(.app (.lam _ _ _ _) _) => do
       pure (← fromExpr $ ← Lean.Core.betaReduce e) -- immediately reduce beta-redexes, as unannotated lambdas are not allowed in Dedukti (FIXME can use full reduction once subsingleton elimination has been implemented)
     | .app fnc arg => do

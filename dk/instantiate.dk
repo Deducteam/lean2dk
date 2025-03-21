@@ -1,9 +1,0 @@
-fromSubLvl: sublvl.SubLvl -> lvl.Lvl.
-
-def sSetFromSubLvlSet: sublvl.Set -> lvl.sSet.
-
-[] sSetFromSubLvlSet sublvl.nil --> lvl.snil.
-[s, l] sSetFromSubLvlSet (sublvl.union s (sublvl.singleton l)) --> lvl.scons (lvl.singleton (fromSubLvl l)) (sSetFromSubLvlSet s).
-
-def fromSubLvlSet: sublvl.Set -> lvl.Set.
-[s] fromSubLvlSet s --> lvl.multi (sSetFromSubLvlSet s).
