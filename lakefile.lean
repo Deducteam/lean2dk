@@ -28,10 +28,10 @@ inductive L' where
 | inst : L' -> L'
 #check L'.rec
 
-require lean4lean from "/home/rvaishna/projects/lean4lean/"
+-- require lean4lean from "/home/rvaishna/projects/lean4lean/"
 
--- require lean4lean from git
---   "https://github.com/rish987/Lean4Lean" @ "update-tc"
+require lean4lean from git
+  "https://github.com/rish987/Lean4Lean" @ "lean2dk"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "
