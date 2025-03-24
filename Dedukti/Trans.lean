@@ -198,7 +198,7 @@ mutual
     | .recInfo      (val : Lean.RecursorVal) => do
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
       let rules ← val.rules.foldlM (init := []) fun acc r => do
-        dbg_trace s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
+        -- dbg_trace s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
           -- let some ctor := env.find? r.ctor | tthrow s!"could not find constructor {r.ctor}?!"
 

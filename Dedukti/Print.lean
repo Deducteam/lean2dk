@@ -70,6 +70,7 @@ structure PrintCtx where
   
 structure PrintState where
   printedConsts : Lean.RBMap Name String compare := default
+  printedTypes : Lean.RBMap Name String compare := default
   /--
     Keeps track of whether any of the rules corresponding to a constant referenced any pending types;
     if so, printing of these rules is delayed until after those types have been printed.
@@ -282,7 +283,7 @@ mutual
       | .static (name : Name) (type : Expr) => do
         -- dbg_trace s!"printing static constant: {name}"
         let constString := s!"{name} : {← type.print}."
-        modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString}
+        modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString, printedTypes := s.printedTypes.insert const.name constString}
 
         updateTypePrinted name
         updateRulesPrinted name
@@ -293,9 +294,10 @@ mutual
       | .definable (name : Name) (type : Expr) (rules : List Rule) => do
         -- dbg_trace s!"printing: {name}"
         -- modify fun s => { s with pendingRules := s.pendingRules.insert name [] } -- TODO needed?
-        let declString := s!"def {name.toString false} : {← withPendingType name type.print}."
-        -- dbg_trace s!"done printing type of: {name}"
-        modify fun s => { s with out := s.out ++ [declString], pendingRules := s.pendingRules.insert name [] }
+        if not ((← get).printedTypes.contains name) then
+          let declString := s!"def {name.toString false} : {← withPendingType name type.print}."
+          -- dbg_trace s!"done printing type of: {name}"
+          modify fun s => { s with out := s.out ++ [declString], pendingRules := s.pendingRules.insert name [], printedTypes := s.printedTypes.insert const.name declString}
 
         -- dbg_trace s!"adding {rules.length} pending rules for {name}"
         for rule in rules do
@@ -318,8 +320,9 @@ end
 -- if `name` is specified, only print that constant (without printing dependencies)
 def Env.print (env : Env) (deps : Bool := true) : PrintM PUnit := do
   -- dbg_trace s!"\n\n NEW PRINT"
-  withPrintDeps deps $ env.constMap.forM (fun _ const =>
-    --dbg_trace s!"printing: {const.name}"
+  withPrintDeps deps $ env.constMap.forM (fun _ const => do
+    if not ((← get).printedConsts.contains const.name) then
+      dbg_trace s!"printing: {const.name}"
     const.print)
 
 end Dedukti

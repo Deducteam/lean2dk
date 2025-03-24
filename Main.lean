@@ -33,7 +33,8 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
       if let some only := only? then
         for name in only do
           let maxConstPrint := 400 -- FIXME make "constant"
-          let constString := s.printedConsts.find! (fixLeanName name)
+          let name := fixLeanName name
+          let some constString := s.printedConsts.find? name | throw $ IO.userError s!"could not find symbol {name} in translated environment"
           let constString := if constString.length > maxConstPrint then constString.extract ⟨0⟩ ⟨maxConstPrint⟩ ++ "..." else constString
           IO.println $ "\n" ++ constString
       else
@@ -42,17 +43,23 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
         IO.FS.writeFile "dk/out.dk" dkEnvString
 
 def runTransCmd (p : Parsed) : IO UInt32 := do
-  let path := ⟨p.positionalArg! "input" |>.value⟩
-  let fileName := path.toString
-  let moduleName ← Lean.moduleNameOfFileName path .none 
+  let moduleArg := p.positionalArg! "input" |>.value
+  let module := moduleArg.toName
+  if module == .anonymous then throw <| IO.userError s!"Could not resolve module: {moduleArg}"
   -- TODO better way to print with colors?
-  IO.println s!"\n{BLUE}>> Translation file: {YELLOW}{fileName}{NOCOLOR}"
+  IO.println s!"\n{BLUE}>> Translation module: {YELLOW}{module}{NOCOLOR}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
 
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
-  Lean.initSearchPath (← Lean.findSysroot)
-  let env ← Lean.importModules #[moduleName] {} 0
+  let searchPath? := p.flag? "search-path" |>.map fun sp => 
+    sp.as! String
+  match searchPath? with
+  | .some sp =>
+    let path := System.FilePath.mk sp
+    Lean.searchPathRef.set [path]
+  | _ => Lean.initSearchPath (← Lean.findSysroot)
+  let env ← Lean.importModules #[module] {} 0
 
   let mut write := true
   IO.println s!"{NOCOLOR}"
@@ -63,8 +70,8 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     printColor BLUE s!">> Using CLI-specified constants: {_onlyConsts}..."
     onlyConstsArr := _onlyConsts.map (·.toName)
   else
-    printColor BLUE s!">> Using all constants from given module: {moduleName}..."
-    let some moduleIdx := Lean.Environment.getModuleIdx? env moduleName | throw $ IO.userError s!"main module {moduleName} not found"
+    printColor BLUE s!">> Using all constants from given module: {module}..."
+    let some moduleIdx := Lean.Environment.getModuleIdx? env module | throw $ IO.userError s!"main module {module} not found"
     let moduleConstNames := env.header.moduleData.get! moduleIdx |>.constNames.toList
     onlyConstsArr := ⟨moduleConstNames⟩
 
@@ -100,12 +107,13 @@ def transCmd : Cmd := `[Cli|
   "Translate from Lean to Dedukti."
 
   FLAGS:
-    p, print;               "Print translation of specified constants to standard output (relevant only with '-o ...')."
-    w, write;               "Also write translation of specified constants (with dependencies) to file (relevant only with '-p')."
-    o, only : Array String; "Only translate the specified constants and their dependencies."
+    s, "search-path" : String; "Set Lean search path directory"
+    o, only : Array String;    "Only translate the specified constants and their dependencies."
+    p, print;                  "Print translation of specified constants to standard output (relevant only with '-o ...')."
+    w, write;                  "Also write translation of specified constants (with dependencies) to file (relevant only with '-p')."
 
   ARGS:
-    input : String;         "Input .lean file."
+    input : String; "Input Lean module name (e.g. `Init.Classical`)."
 
   -- SUBCOMMANDS:
   --   installCmd;
