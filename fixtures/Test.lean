@@ -168,3 +168,6 @@ theorem treeSumTest : Eq (treeSum (.mk one (.cons (.mk one .nil) .nil))) two := 
 -- structure PLift (α : Sort u) : Type u where
 --   up :: down : α
 -- #check PLift.rec
+
+axiom S : Sort u
+def f : Sort (max u v) := S.{max u v}

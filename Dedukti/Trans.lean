@@ -53,8 +53,9 @@ mutual
     | .app fnc arg => do
       pure $ .app (← fromExpr fnc) (← fromExpr arg)
     | e@(.lam ..) => lambdaTelescope e fun domVars bod => do
-                                domVars.foldrM (init := (← withTypedFVars domVars $ fromExpr bod)) fun _ (curr) => do
-                                  pure (.lam curr)
+                                let (_, ret) ← domVars.foldrM (init := (1, (← withTypedFVars domVars $ fromExpr bod))) fun v (i, curr) => do
+                                  pure (i + 1, (.lam curr (← withTypedFVars domVars[:domVars.size - i] $ fromExprAsType (← inferType v))))
+                                pure ret
     | e@(.forallE ..) => forallTelescope e fun domVars img => do
                                 let (ret, _) ← domVars.size.foldRevM (init := (← withTypedFVars domVars $ fromExpr img, ← levelFromInferredType img)) fun i _ (curr, s2) => do
                                   let domVar := domVars[i]!
@@ -63,7 +64,7 @@ mutual
                                   let s3 := Level.imax s1 s2
                                   --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
                                   let ret ← withTypedFVars domVars[:i] do -- TODO probably not necessary to do `withTypedFVars` here (can get domain from (← read).fvarTypes, and the sorts shouldn't contain free variables)
-                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr)])
+                                    pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr dom, (.lam curr (← fromExprAsType dom))])
                                   pure (ret, s3)
                                 pure ret
     | .letE name typ val bod _ => -- TODO recursive lets (with references in type)?
@@ -151,7 +152,7 @@ mutual
       else
         let value ← fromExpr val.value
         -- let value ← fromExpr $ ← reduceAll val.value -- FIXME use this version (mainly to shorten output code) once implemented subsingleton elimination (for the moment e.g. Unit.recOn is problematic)
-        let value := (← read).lvlParams.revFold (init := value) fun curr _ _ => .lam curr
+        let value := (← read).lvlParams.revFold (init := value) fun curr _ _ => .lam curr (.const `lvl.Lvl)
         pure $ .definable name type [.mk 0 (.const name) value]
     | .opaqueInfo   (_ : Lean.OpaqueVal) => pure $ .static name (.fixme "OPAQUE.FIXME") -- FIXME
     | .quotInfo     (val : Lean.QuotVal) =>

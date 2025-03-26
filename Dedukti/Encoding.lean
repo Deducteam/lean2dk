@@ -28,7 +28,7 @@ namespace Encoding
       | .var n => do 
         let var := .var (((← read).lvlParams.size - n) + (← read).fvars.size - 1)
         if (← read).noLVarNormalize then 
-          pure $ .app (.const `normalize.maxS ) var
+          pure $ .app (.const `normalize.maxS) var
         else
           pure $ .appN (.const `lvl.var) [natToExpr n, var]
       | .inst l    => do pure $ .app (.const `lvl.inst) (← toExpr l)

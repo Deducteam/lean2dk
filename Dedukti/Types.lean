@@ -14,7 +14,7 @@ mutual
     | const (name : Name)
     | fixme (msg : String)
     | app (fn : Expr) (arg : Expr)
-    | lam (bod : Expr)
+    | lam (bod typ : Expr)
     | pi (dom : Expr) (img : Expr)
     | type
     | kind
