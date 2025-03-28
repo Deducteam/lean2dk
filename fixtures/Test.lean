@@ -97,6 +97,8 @@ noncomputable def letTest : Prop :=
 
 structure Point (U : Type u) (V : Type v) (W : Type w) where
 mk :: (x : U) (z : V) (y : W)
+#print Point.rec
+#print Point.mk
 
 noncomputable def letTestBinders (f : Point A B C → Nat) : Point A B C → Bool → Prop :=
   fun n b =>
@@ -168,6 +170,9 @@ theorem treeSumTest : Eq (treeSum (.mk one (.cons (.mk one .nil) .nil))) two := 
 -- structure PLift (α : Sort u) : Type u where
 --   up :: down : α
 -- #check PLift.rec
+inductive Rec (T : Type w) where
+| nil : Rec T
+| cons : T → Rec T → Rec T
 
 axiom S : Sort u
 def f : Sort (max u v) := S.{max u v}

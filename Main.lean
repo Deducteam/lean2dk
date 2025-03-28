@@ -2,7 +2,8 @@ import Dedukti.Trans
 import Dedukti.Print
 import Cli
 import Lean.Replay
-import Lean4Lean.Replay
+import Lean4Less.Replay
+import Lean4Less.Commands
 import Lean4Lean.Commands
 import Dedukti.Util
 
@@ -42,7 +43,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
         IO.FS.writeFile "dk/out.dk" dkEnvString
 
-def runTransCmd (p : Parsed) : IO UInt32 := do
+unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
   let moduleArg := p.positionalArg! "input" |>.value
   let module := moduleArg.toName
   if module == .anonymous then throw <| IO.userError s!"Could not resolve module: {moduleArg}"
@@ -50,6 +51,8 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
   IO.println s!"\n{BLUE}>> Translation module: {YELLOW}{module}{NOCOLOR}"
   let onlyConsts? := p.flag? "only" |>.map fun setPathsFlag => 
     setPathsFlag.as! (Array String)
+
+  let elim := not $ p.hasFlag "no-elim"
 
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
   let searchPath? := p.flag? "search-path" |>.map fun sp => 
@@ -59,55 +62,61 @@ def runTransCmd (p : Parsed) : IO UInt32 := do
     let path := System.FilePath.mk sp
     Lean.searchPathRef.set [path]
   | _ => Lean.initSearchPath (← Lean.findSysroot)
-  let env ← Lean.importModules #[module] {} 0
+  Lean4Less.withImportModuleAndPatchDefs module (elabPatch := elim) fun env => do
+    let overrides := if elim then Lean4Less.getOverrides env.toKernelEnv else default
+    let mut write := true
+    IO.println s!"{NOCOLOR}"
 
-  let mut write := true
-  IO.println s!"{NOCOLOR}"
+    let mut onlyConstsArr := #[]
+    if let some _onlyConsts := onlyConsts? then
+      write := (not $ p.hasFlag "print") || p.hasFlag "write"
+      printColor BLUE s!">> Using CLI-specified constants: {_onlyConsts}..."
+      onlyConstsArr := _onlyConsts.map (·.toName)
+    else
+      printColor BLUE s!">> Using all constants from given module: {module}..."
+      let some moduleIdx := Lean.Environment.getModuleIdx? env module | throw $ IO.userError s!"main module {module} not found"
+      let moduleConstNames := env.header.moduleData.get! moduleIdx |>.constNames.toList
+      onlyConstsArr := ⟨moduleConstNames⟩
 
-  let mut onlyConstsArr := #[]
-  if let some _onlyConsts := onlyConsts? then
-    write := (not $ p.hasFlag "print") || p.hasFlag "write"
-    printColor BLUE s!">> Using CLI-specified constants: {_onlyConsts}..."
-    onlyConstsArr := _onlyConsts.map (·.toName)
-  else
-    printColor BLUE s!">> Using all constants from given module: {module}..."
-    let some moduleIdx := Lean.Environment.getModuleIdx? env module | throw $ IO.userError s!"main module {module} not found"
-    let moduleConstNames := env.header.moduleData.get! moduleIdx |>.constNames.toList
-    onlyConstsArr := ⟨moduleConstNames⟩
+    let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
+      if !const.isImplementationDetail && !const.isCStage then acc.push const else acc
 
-  let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
-    if !const.isImplementationDetail && !const.isCStage then acc.insert const else acc
+    let onlyConstsDeps ← Lean4Lean.getDepConstsEnv env (onlyConstsInit ++ Lean4Less.patchConsts) overrides
+    let onlyConstsDepsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
+    let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
+    let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
+    let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
+    -- let (onlyConsts, env) ← Lean4Lean.replay env onlyConstsDeps (Lean4Less.addDecl (opts := {proofIrrelevance := true, kLikeReduction := true})) (printErr := true) (overrides := default) (printProgress := true) (initConsts := Lean4Less.patchConsts)
 
-  let (onlyConsts, _) ← Lean4Lean.checkConstants env onlyConstsInit Lean4Lean.addDecl (printErr := true) (overrides := default)
+    -- let ignoredConsts := onlyConstsInit.diff onlyConsts
+    -- if ignoredConsts.size > 0 then
+    --   printColor RED s!"WARNING: Skipping translation of {ignoredConsts.size} constants: {ignoredConsts.toArray}..."
 
-  let ignoredConsts := onlyConstsInit.diff onlyConsts
-  if ignoredConsts.size > 0 then
-    printColor RED s!"WARNING: Skipping translation of {ignoredConsts.size} constants: {ignoredConsts.toArray}..."
+    -- printColor BLUE s!">> Translating {onlyConsts.size} constants: {onlyConsts.toArray}..."
+    printColor BLUE s!">> Translating {onlyConstsDeps.size} constants..."
 
-  -- printColor BLUE s!">> Translating {onlyConsts.size} constants: {onlyConsts.toArray}..."
-  printColor BLUE s!">> Translating {onlyConsts.size} constants..."
+    -- translate elaborated Lean environment to Dedukti
+    let (_, {env := dkEnv, ..}) ← (Trans.translateEnv onlyConstsDepsNames (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
 
-  -- translate elaborated Lean environment to Dedukti
-  let (_, {env := dkEnv, ..}) ← (Trans.translateEnv onlyConsts (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
+    -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
-  -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
+    IO.print s!"{PURPLE}"
+    if write then
+      printDkEnv dkEnv none
 
-  IO.print s!"{PURPLE}"
-  if write then
-    printDkEnv dkEnv none
+    if p.hasFlag "print" then
+      printDkEnv dkEnv $ .some onlyConstsDepsNames
+    IO.print s!"{NOCOLOR}"
 
-  if p.hasFlag "print" then
-    printDkEnv dkEnv $ .some onlyConsts
-  IO.print s!"{NOCOLOR}"
+    return 0
 
-  return 0
-
-def transCmd : Cmd := `[Cli|
+unsafe def transCmd : Cmd := `[Cli|
   transCmd VIA runTransCmd; ["0.0.1"]
   "Translate from Lean to Dedukti."
 
   FLAGS:
-    s, "search-path" : String; "Set Lean search path directory"
+    s, "search-path" : String; "Set Lean search path directory."
+    ne, "no-elim";             "Do not eliminate definitional equalities via Lean4Less translation (e.g. when using -s with a pre-translated library)."
     o, only : Array String;    "Only translate the specified constants and their dependencies."
     p, print;                  "Print translation of specified constants to standard output (relevant only with '-o ...')."
     w, write;                  "Also write translation of specified constants (with dependencies) to file (relevant only with '-p')."
@@ -126,5 +135,5 @@ def transCmd : Cmd := `[Cli|
     author "rish987"
 ]
 
-def main (args : List String) : IO UInt32 := do
+unsafe def main (args : List String) : IO UInt32 := do
   transCmd.validate args

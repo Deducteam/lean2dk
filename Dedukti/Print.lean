@@ -182,9 +182,6 @@ partial def getPrintableRules : PrintM $ List String := do
 
       let anyRuleTypesRhsRefs := (← get).ruleTypesRhsRefs.find? ruleConst |>.isSome
 
-      if ruleConst == `Subtype_mk then
-        dbg_trace s!"DBG[7]: Print.lean:163 {(← get).ruleTypesRefs.find? ruleConst |>.map (·.toList)}"
-
       -- dbg_trace s!" {!anyRulePendingTypesRefs} && {!anyRuleTypesRefs} && {(← get).ruleTypesRefs.find? ruleConst |>.getD default |>.toList}, {ruleConst}"
 
       if !anyRulePendingTypesRefs && !anyRuleTypesRefs && !anyTypeRefs && !anyRuleTypesRhsRefs then
@@ -320,8 +317,6 @@ mutual
         -- dbg_trace s!"printing: {name}"
         -- modify fun s => { s with pendingRules := s.pendingRules.insert name [] } -- TODO needed?
         if not ((← get).printedTypes.contains name) then
-          if name == `Classical_em_let3 then
-            dbg_trace s!"DBG[4]: Print.lean:299 {rules.length}"
           let declString := s!"def {name.toString false} : {← withPendingType name type.print}."
           -- dbg_trace s!"done printing type of: {name}"
           modify fun s => { s with out := s.out ++ [declString], pendingRules := s.pendingRules.insert name [], printedTypes := s.printedTypes.insert const.name declString}
@@ -329,12 +324,7 @@ mutual
         -- dbg_trace s!"adding {rules.length} pending rules for {name}"
         for rule in rules do
           let ruleString ← withPrintingRule name rule.print
-          if name == `Classical_em_let3 then
-            dbg_trace s!"DBG[5]: Print.lean:307 (after if name == Classical_em_let3 then)"
           modify fun s => { s with pendingRules := s.pendingRules.insert name $ s.pendingRules.find! name ++ [ruleString]}
-
-        if name == `Classical_em_let3 then
-          dbg_trace s!"DBG[6]: Print.lean:310 {(← get).pendingRules.find! name}"
 
         updateTypePrinted name
         let rulesToPrint ← getPrintableRules
