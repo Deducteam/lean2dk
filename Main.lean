@@ -82,10 +82,11 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       if !const.isImplementationDetail && !const.isCStage then acc.push const else acc
 
     let onlyConstsDeps ← Lean4Lean.getDepConstsEnv env (onlyConstsInit ++ Lean4Less.patchConsts) overrides
-    let onlyConstsDepsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
     let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
     let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
     let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
+    let onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
+    let onlyConstsDepsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
     -- let (onlyConsts, env) ← Lean4Lean.replay env onlyConstsDeps (Lean4Less.addDecl (opts := {proofIrrelevance := true, kLikeReduction := true})) (printErr := true) (overrides := default) (printProgress := true) (initConsts := Lean4Less.patchConsts)
 
     -- let ignoredConsts := onlyConstsInit.diff onlyConsts
