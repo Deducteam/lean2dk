@@ -36,6 +36,19 @@ def dupParams (origParams : Array Lean.Expr) : TransM (Array (Name × Lean.Binde
     let paramType ← inferType param
     pure $ x.append #[(default, default, fun prevParams => pure $ paramType.replaceFVars origParams[:prevParams.size] prevParams)] -- FIXME do I need to generate unique names here? e.g. param.fvarId!.name ++ `New
 
+/-- Gets the `StructureInfo` if `structName` has been declared as a structure to the elaborator. -/
+def getStructureInfo? (env : Lean.Environment) (structName : Name) : TransM (Option Lean.StructureInfo) :=
+  match env.const2ModIdx[structName]? with
+  | some modIdx => pure $ Lean.structureExt.getModuleEntries env modIdx |>.binSearch { structName } Lean.StructureInfo.lt
+  | none        => tthrow s!"structure not found: {structName}"
+
+def mkProjFn (induct : Name) (us : List Lean.Level) (params : Array Lean.Expr) (i : Nat) (major : Lean.Expr) : TransM Lean.Expr := do
+  match ← getStructureInfo? (← read).env induct with
+  | none => tthrow "projection function not found"
+  | some info => match info.getProjFn? i with
+    | none => tthrow "projection function not found"
+    | some projFn => return Lean.mkApp (Lean.mkAppN (Lean.mkConst projFn us) params) major
+
 mutual
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
@@ -92,7 +105,14 @@ mutual
         modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
         withLet (x.fvarId!.name) $ fromExpr bod
     | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
-    | e@(.proj _ _ _) => tthrow s!"encountered unexpected low-level projection application: {e}"
+    | .proj n i s => do
+      let sType ← whnf $ ← inferType s
+      let typeCtor := sType.getAppFn
+      let .const I lvls := typeCtor | unreachable!
+      let .some (.inductInfo iInfo) := (← read).env.find? I | unreachable!
+      let params := sType.getAppArgs[:iInfo.numParams]
+      let newApp ← mkProjFn n lvls params i s
+      fromExpr newApp
     | e@(.fvar id) => do 
                     match (← read).fvars.indexOf? e with
                     | some i => pure $ .var ((← read).fvars.size - 1 - i)

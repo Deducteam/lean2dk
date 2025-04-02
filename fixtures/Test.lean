@@ -14,7 +14,7 @@ inductive Nat : Type where
   | zero : Nat
   | succ : Nat → Nat
 
-inductive Unit : Prop where
+inductive Unit : Type where
   | mk : Unit
 
 inductive UnitDep : Nat → Prop where
@@ -51,7 +51,7 @@ noncomputable def Nat.add (a : Nat) (b : Nat) : Nat :=
   Nat.rec a (fun _ sum => Nat.succ sum) b
 
 -- large-eliminating with universe arg
-inductive Eq {α : Type u} : α → α → Prop where
+inductive Eq {α : Sort u} : α → α → Prop where
   | refl {a : α} : Eq a a
 
 -- TODO large-eliminating with multiple universe args
@@ -174,5 +174,12 @@ inductive Rec (T : Type w) where
 | nil : Rec T
 | cons : T → Rec T → Rec T
 
-axiom S : Sort u
-def f : Sort (max u v) := S.{max u v}
+axiom P : Prop
+
+structure S : Type where
+p : P
+def structEtaTest (s t : S) : Eq t (S.mk s.p) := Eq.refl
+
+def unitTest (u v : Unit) : Eq u v := Eq.refl
+def structRedTest (s : S) : Eq (S.rec (fun _ => Nat.zero) s) Nat.zero := Eq.refl
+def f : Sort ((max u v) + 1) := Sort (max u v)
