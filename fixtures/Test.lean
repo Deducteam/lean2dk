@@ -183,3 +183,8 @@ def structEtaTest (s t : S) : Eq t (S.mk s.p) := Eq.refl
 def unitTest (u v : Unit) : Eq u v := Eq.refl
 def structRedTest (s : S) : Eq (S.rec (fun _ => Nat.zero) s) Nat.zero := Eq.refl
 def f : Sort ((max u v) + 1) := Sort (max u v)
+
+init_quot
+
+def quotLiftTest : Eq (Quot.lift (fun _ => Nat.zero) (fun a b h => Eq.refl) (Quot.mk (fun _ _ => True) (Nat.succ Nat.zero))) Nat.zero := Eq.refl
+def quotIndTest : Eq (Quot.ind (β := fun q => True) (fun a => trivial) (Quot.mk (fun _ _ => True) (Nat.succ Nat.zero))) trivial := Eq.refl

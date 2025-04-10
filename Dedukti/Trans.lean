@@ -178,9 +178,9 @@ mutual
     | .quotInfo     (val : Lean.QuotVal) =>
       match val.kind with
         | .type    -- `Quot`
-        | .ctor    -- `Quot.mk`
-        | .ind =>  -- `Quot.ind`
+        | .ctor => -- `Quot.mk`
           pure $ .static name type
+        | .ind     -- `Quot.ind`
         | .lift => -- `Quot.lift`
           forallTelescope cnst.type fun domVars _ => do
             let lvls := cnst.levelParams.map (Lean.Level.param ·)
@@ -191,7 +191,6 @@ mutual
                   let lhsLean := Lean.mkAppN (.const name lvls) (params ++ [ctorAppLean])
                   let fnArg := params[3]!
                   let rhsLean := Lean.mkApp fnArg instArg
-                  -- FIXME ask about when to use array vs list
                   let numVars := lvls.length + params.size + instParams.size + 1
                   let (lhs, rhs) ← withTypedFVars (params ++ instParams ++ [instArg]) $ withNoLVarNormalize $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
                   pure $ .definable name type [.mk numVars lhs rhs]
@@ -203,17 +202,24 @@ mutual
             let params := params[:params.size - val.numFields] -- will replace fields with projection applications
             let lvls := cnst.levelParams.map (Lean.Level.param ·)
             let some info := Lean.getStructureInfo? env val.induct | tthrow "impossible case"
-            let projApps ← info.fieldNames.mapM fun i =>
+            let projApps? ← info.fieldNames.mapM fun i => do
               match Lean.getProjFnForField? env val.induct i with
               | .some projFn => do
-                pure $ Lean.mkAppN (.const projFn lvls) (params ++ #[outVar])
+                if not ((← read).env.contains projFn) then
+                  pure none
+                else
+                  pure $ .some $ Lean.mkAppN (.const projFn lvls) (params ++ #[outVar])
               | .none => tthrow "impossible case"
+            if projApps?.any (·.isNone) then
+              pure $ .static name type
+            else
+              let projApps := projApps?.map (·.get!)
 
-            let lhsLean := Lean.mkAppN (.const name lvls) (params ++ projApps)
-            let rhsLean := outVar
-            let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ #[outVar]) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
-            -- dbg_trace s!"found struct: {ctor.name}"
-            pure $ .definable name type [.mk (1 + lvls.length + params.size) lhs rhs] -- TODO make injective
+              let lhsLean := Lean.mkAppN (.const name lvls) (params ++ projApps)
+              let rhsLean := outVar
+              let (lhs, rhs) ← withNoLVarNormalize $ withTypedFVars (params ++ #[outVar]) $ do pure (← fromExpr lhsLean, ← fromExpr rhsLean)
+              -- dbg_trace s!"found struct: {ctor.name}"
+              pure $ .definable name type [.mk (1 + lvls.length + params.size) lhs rhs] -- TODO make injective
       else
         pure $ .static name type
     | .recInfo      (val : Lean.RecursorVal) => do

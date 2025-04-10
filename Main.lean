@@ -81,11 +81,33 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
       if !const.isImplementationDetail && !const.isCStage then acc.push const else acc
 
-    let onlyConstsDeps ← Lean4Lean.getDepConstsEnv env (onlyConstsInit ++ Lean4Less.patchConsts) overrides
-    let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
-    let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
+    let getProjFns deps env := do
+      let mut projFns := #[]
+      for (n, info) in deps do
+        if let .inductInfo _ := info then
+          if Lean.isStructure env n then
+            dbg_trace s!"DBG[8]: Main.lean:88 (after if Lean.isStructureLike env {n} then)"
+            let si := Lean.getStructureInfo env n
+            dbg_trace s!"DBG[9]: Main.lean:90 (after let si := Lean.getStructureInfo env n)"
+            let mut i := 0
+            while true do
+              if let some pn := si.getProjFn? i then
+                let .some pi := env.find? pn | throw $ IO.userError s!"could not find projection function {pn}"
+                projFns := projFns.push (pn, pi)
+              else break
+              i := i + 1
+      pure projFns
+
+    let mut onlyConstsDeps ← Lean4Lean.getDepConstsEnv env (onlyConstsInit ++ Lean4Less.patchConsts) overrides
+    for (pn, pi) in  ← getProjFns onlyConstsDeps env do
+      onlyConstsDeps := onlyConstsDeps.insert pn pi
+    let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim, structLikeReduction := elim}) else Lean4Lean.addDecl
+    let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim, structLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
     let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
-    let onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
+    onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
+    for (pn, pi) in  ← getProjFns onlyConstsDeps env do
+      onlyConstsDeps := onlyConstsDeps.insert pn pi
+
     let onlyConstsDepsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
     -- let (onlyConsts, env) ← Lean4Lean.replay env onlyConstsDeps (Lean4Less.addDecl (opts := {proofIrrelevance := true, kLikeReduction := true})) (printErr := true) (overrides := default) (printProgress := true) (initConsts := Lean4Less.patchConsts)
 
