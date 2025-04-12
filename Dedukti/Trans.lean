@@ -42,14 +42,14 @@ def getStructureInfo? (env : Lean.Environment) (structName : Name) : TransM (Opt
   | some modIdx => pure $ Lean.structureExt.getModuleEntries env modIdx |>.binSearch { structName } Lean.StructureInfo.lt
   | none        => tthrow s!"structure not found: {structName}"
 
-def mkProjFn (induct : Name) (us : List Lean.Level) (params : Array Lean.Expr) (i : Nat) (major : Lean.Expr) : TransM Lean.Expr := do
-  match ← getStructureInfo? (← read).env induct with
-  | none => tthrow "projection function not found"
-  | some info => match info.getProjFn? i with
-    | none => tthrow "projection function not found"
-    | some projFn => return Lean.mkApp (Lean.mkAppN (Lean.mkConst projFn us) params) major
-
 mutual
+  partial def mkProjFn (induct : Name) (us : List Lean.Level) (params : Array Lean.Expr) (i : Nat) (major : Lean.Expr) : TransM Expr := do
+    match ← getStructureInfo? (← read).env induct with
+    | none => pure $ .fixme "PROJ.FIXME"
+    | some info => match info.getProjFn? i with
+      | none => tthrow "projection function not found 2"
+      | some projFn => fromExpr $ Lean.mkApp (Lean.mkAppN (Lean.mkConst projFn us) params) major
+
   partial def fromExpr : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
     | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
@@ -57,7 +57,7 @@ mutual
       if (← read).transDeps then
         transNamedConst name
       -- dbg_trace s!"translating const {name} with levels: {lvls} --> {repr $ ← lvls.mapM fromLevel}"
-      pure $ (.appN (.const $ fixLeanName name) (← lvls.mapM fun lvl => do
+      pure $ (.appN (.const $ ← fixLeanName 1 name) (← lvls.mapM fun lvl => do
           let l ← fromLevel' lvl
           (l.inst).toExpr
         ))
@@ -106,13 +106,13 @@ mutual
         withLet (x.fvarId!.name) $ fromExpr bod
     | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
     | .proj n i s => do
-      let sType ← whnf $ ← inferType s
+      let sType' ← inferType s
+      let sType ← whnf sType'
       let typeCtor := sType.getAppFn
       let .const I lvls := typeCtor | unreachable!
       let .some (.inductInfo iInfo) := (← read).env.find? I | unreachable!
       let params := sType.getAppArgs[:iInfo.numParams]
-      let newApp ← mkProjFn n lvls params i s
-      fromExpr newApp
+      mkProjFn n lvls params i s
     | e@(.fvar id) => do 
                     match (← read).fvars.indexOf? e with
                     | some i => pure $ .var ((← read).fvars.size - 1 - i)
@@ -141,8 +141,8 @@ mutual
       pure (fvarTypes.insert fvar.fvarId!.name type, fvars.push fvar)
     withFVars fvarTypes fvars m
 
-  partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const :=
-  withNewConstant (fixLeanName cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
+  partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const := do
+  withNewConstant (← fixLeanName 2 cnst.name) $ withResetCtx $ withLvlParams cnst.levelParams do
     let name := (← read).constName
     let type ← fromExprAsType cnst.type
     let type := (← read).lvlParams.revFold (init := type) fun curr _ _ => .pi (.const `lvl.Lvl) curr
@@ -258,14 +258,15 @@ mutual
 
   partial def transConst (cinfo : Lean.ConstantInfo) : TransM Unit := do
     -- pre-mark as translated in order to prevent infinite looping with transDeps == true
-    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) default} }
+    let name ← fixLeanName 3 cinfo.name
+    modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert name default} }
     let const ← constFromConstantInfo (← read).env cinfo
     let s ← get
-    let s := { s with env := {s.env with constMap := s.env.constMap.insert (fixLeanName cinfo.name) const} }
+    let s := { s with env := {s.env with constMap := s.env.constMap.insert (← fixLeanName 4 cinfo.name) const} }
     set s -- FIXME why can't use modify here?
 
   partial def transNamedConst (const : Name) : TransM Unit := do
-    match (← get).env.constMap.find? (fixLeanName const) with -- only translate if not already translated
+    match (← get).env.constMap.find? (← fixLeanName 5 const) with -- only translate if not already translated
     | some _ => pure ()
     | none =>
       match (← read).env.constants.find? const with

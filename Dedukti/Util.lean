@@ -5,6 +5,7 @@ def charSubs := [
   -- ("»", "-_"),
   -- ("«", "_-"),
   (":", "_cln_"),
+  ("@", "_at_"),
   -- TODO any other weird chars?
 ]
 
@@ -15,5 +16,8 @@ def fixLeanName' : Name → Name
 | .num p n   => .num (fixLeanName' p) n
 | .anonymous => .anonymous
 
-def fixLeanName (n : Name) : Name :=
-  fixLeanName' n |>.toStringWithSep "_" false |>.toName
+def fixLeanName (id : Nat) (n : Name) : Name := Id.run $ do
+  let ret ← fixLeanName' n |>.toStringWithSep "_" false |>.toName
+  if ret == Name.anonymous then
+    dbg_trace s!"WARNING ({id}): Could not translate name '{n}'"
+  pure ret

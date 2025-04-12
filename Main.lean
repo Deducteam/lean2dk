@@ -34,7 +34,7 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
       if let some only := only? then
         for name in only do
           let maxConstPrint := 400 -- FIXME make "constant"
-          let name := fixLeanName name
+          let name := fixLeanName 6 name
           let some constString := s.printedConsts.find? name | throw $ IO.userError s!"could not find symbol {name} in translated environment"
           let constString := if constString.length > maxConstPrint then constString.extract ⟨0⟩ ⟨maxConstPrint⟩ ++ "..." else constString
           IO.println $ "\n" ++ constString
@@ -53,6 +53,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     setPathsFlag.as! (Array String)
 
   let elim := not $ p.hasFlag "no-elim"
+  let all := p.hasFlag "all"
 
   IO.println s!"\n{BLUE}>> Elaborating... {YELLOW}\n"
   let searchPath? := p.flag? "search-path" |>.map fun sp => 
@@ -72,13 +73,16 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       write := (not $ p.hasFlag "print") || p.hasFlag "write"
       printColor BLUE s!">> Using CLI-specified constants: {_onlyConsts}..."
       onlyConstsArr := _onlyConsts.map (·.toName)
-    else
+    else if not all then
       printColor BLUE s!">> Using all constants from given module: {module}..."
       let some moduleIdx := Lean.Environment.getModuleIdx? env module | throw $ IO.userError s!"main module {module} not found"
       let moduleConstNames := env.header.moduleData.get! moduleIdx |>.constNames.toList
       onlyConstsArr := ⟨moduleConstNames⟩
+    else 
+      let constNames := env.constants.toList.map (·.1)
+      onlyConstsArr := ⟨constNames⟩
 
-    let onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
+    let mut onlyConstsInit := onlyConstsArr.foldl (init := default) fun acc const =>
       if !const.isImplementationDetail && !const.isCStage then acc.push const else acc
 
     let getProjFns deps env := do
@@ -86,9 +90,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       for (n, info) in deps do
         if let .inductInfo _ := info then
           if Lean.isStructure env n then
-            dbg_trace s!"DBG[8]: Main.lean:88 (after if Lean.isStructureLike env {n} then)"
             let si := Lean.getStructureInfo env n
-            dbg_trace s!"DBG[9]: Main.lean:90 (after let si := Lean.getStructureInfo env n)"
             let mut i := 0
             while true do
               if let some pn := si.getProjFn? i then
@@ -98,17 +100,39 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
               i := i + 1
       pure projFns
 
-    let mut onlyConstsDeps ← Lean4Lean.getDepConstsEnv env (onlyConstsInit ++ Lean4Less.patchConsts) overrides
-    for (pn, pi) in  ← getProjFns onlyConstsDeps env do
-      onlyConstsDeps := onlyConstsDeps.insert pn pi
-    let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim, structLikeReduction := elim}) else Lean4Lean.addDecl
-    let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim, structLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
-    let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
-    onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
-    for (pn, pi) in  ← getProjFns onlyConstsDeps env do
-      onlyConstsDeps := onlyConstsDeps.insert pn pi
+    let mut patchConstsDeps := ← if elim then Lean4Lean.getDepConstsEnv env (Lean4Less.patchConsts) overrides else pure default
+    for (pn, pi) in  ← getProjFns patchConstsDeps env do
+      patchConstsDeps := patchConstsDeps.insert pn pi
 
-    let onlyConstsDepsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
+    let mut onlyConstsDeps' ← Lean4Lean.getDepConstsEnv env (onlyConstsInit) overrides
+    onlyConstsInit := #[]
+    let mut onlyConstsDeps := default
+    for (n, ci) in onlyConstsDeps' do
+      if not (patchConstsDeps.contains n) then
+        if !ci.isUnsafe && !ci.isPartial then
+          onlyConstsDeps := onlyConstsDeps.insert n ci
+          onlyConstsInit := onlyConstsInit.push n
+    
+    for (pn, pi) in  ← getProjFns onlyConstsDeps env do
+      onlyConstsDeps := onlyConstsDeps.insert pn pi
+    
+    let env ← do
+      if elim then
+        let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
+
+        let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := patchConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
+        let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
+        let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} kenv (printProgress := true) (op := "patch")
+        let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
+        onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
+        for (pn, pi) in  ← getProjFns onlyConstsDeps env do
+          onlyConstsDeps := onlyConstsDeps.insert pn pi
+
+        pure env
+      else
+        pure env
+
+    let constsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const |>.union $ patchConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
     -- let (onlyConsts, env) ← Lean4Lean.replay env onlyConstsDeps (Lean4Less.addDecl (opts := {proofIrrelevance := true, kLikeReduction := true})) (printErr := true) (overrides := default) (printProgress := true) (initConsts := Lean4Less.patchConsts)
 
     -- let ignoredConsts := onlyConstsInit.diff onlyConsts
@@ -119,7 +143,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     printColor BLUE s!">> Translating {onlyConstsDeps.size} constants..."
 
     -- translate elaborated Lean environment to Dedukti
-    let (_, {env := dkEnv, ..}) ← (Trans.translateEnv onlyConstsDepsNames (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
+    let (_, {env := dkEnv, ..}) ← (Trans.translateEnv constsNames (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
 
     -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
@@ -128,7 +152,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       printDkEnv dkEnv none
 
     if p.hasFlag "print" then
-      printDkEnv dkEnv $ .some onlyConstsDepsNames
+      printDkEnv dkEnv $ .some constsNames
     IO.print s!"{NOCOLOR}"
 
     return 0
@@ -140,6 +164,7 @@ unsafe def transCmd : Cmd := `[Cli|
   FLAGS:
     s, "search-path" : String; "Set Lean search path directory."
     ne, "no-elim";             "Do not eliminate definitional equalities via Lean4Less translation (e.g. when using -s with a pre-translated library)."
+    a, "all";                  "Also translate all constants from the dependencies of the specified module (not just the ones appearing in the module itself)"
     o, only : Array String;    "Only translate the specified constants and their dependencies."
     p, print;                  "Print translation of specified constants to standard output (relevant only with '-o ...')."
     w, write;                  "Also write translation of specified constants (with dependencies) to file (relevant only with '-p')."

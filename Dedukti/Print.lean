@@ -170,6 +170,12 @@ def updateRulesPrinted (const : Name) : PrintM Unit := do
   modify fun s => { s with typeTypesRefs := eraseFromValues s.typeTypesRefs const}
   modify fun s => { s with ruleTypesRhsRefs := eraseFromValues s.ruleTypesRhsRefs const}
 
+def setConstPrinted (name : Name) (str : String) : PrintM PUnit := do
+  modify fun s => { s with printedConsts := s.printedConsts.insert name str }
+  let size := (← get).printedConsts.size
+  if size % 1000 == 0 then
+    dbg_trace s!"{size} constants printed"
+
 partial def getPrintableRules : PrintM $ List String := do
   let mut rulesToPrint := []
   for (ruleConst, rules) in (← get).pendingRules do
@@ -191,7 +197,7 @@ partial def getPrintableRules : PrintM $ List String := do
         rulesToPrint := rulesToPrint ++ rules ++ (← getPrintableRules)
         let origRulesString := "\n".intercalate rules
 
-        modify fun s => { s with printedConsts := s.printedConsts.insert ruleConst s!"TODO get decl\n{origRulesString}"}
+        setConstPrinted ruleConst s!"TODO get decl\n{origRulesString}"
 
   pure rulesToPrint
 
@@ -244,6 +250,11 @@ def dkExprNeedsTypeParens : Expr → Bool
   | .type => false
   | .kind => false
 
+def maybeQuote (name : Name) : String :=
+  let nameString := name.toString false
+  let shouldQuote := nameString.any (fun c => c.toNat > 255)
+  if shouldQuote then s!"\{|{nameString}|}" else nameString
+
 mutual
   partial def Rule.print (rule : Rule) : PrintM String := do
     match rule with
@@ -280,7 +291,7 @@ mutual
               -- is correctly linearized upon printing the .dk file
               let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
               const.print
-      pure $ name.toString false
+      pure $ maybeQuote name
     | .fixme msg => pure s!"Type (;{msg};)"
     | .app fn arg =>
       let fnExprString ← fn.print
@@ -296,6 +307,7 @@ mutual
     | .type => pure "Type"
     | .kind => pure "Kind"
 
+
   partial def Const.print (const : Const) : PrintM PUnit := withResetPrintMLevel $ withInLhs false do
     if ((← get).printedConsts.contains const.name) then return
 
@@ -304,8 +316,9 @@ mutual
     match const with
       | .static (name : Name) (type : Expr) => do
         -- dbg_trace s!"printing static constant: {name}"
-        let constString := s!"{name} : {← type.print}."
-        modify fun s => { s with out := s.out ++ [constString], printedConsts := s.printedConsts.insert const.name constString, printedTypes := s.printedTypes.insert const.name constString}
+        let constString := s!"{maybeQuote name} : {← type.print}."
+        modify fun s => { s with out := s.out ++ [constString], printedTypes := s.printedTypes.insert const.name constString}
+        setConstPrinted const.name constString
 
         updateTypePrinted name
         updateRulesPrinted name
@@ -317,7 +330,7 @@ mutual
         -- dbg_trace s!"printing: {name}"
         -- modify fun s => { s with pendingRules := s.pendingRules.insert name [] } -- TODO needed?
         if not ((← get).printedTypes.contains name) then
-          let declString := s!"def {name.toString false} : {← withPendingType name type.print}."
+          let declString := s!"def {maybeQuote name} : {← withPendingType name type.print}."
           -- dbg_trace s!"done printing type of: {name}"
           modify fun s => { s with out := s.out ++ [declString], pendingRules := s.pendingRules.insert name [], printedTypes := s.printedTypes.insert const.name declString}
 
@@ -343,8 +356,8 @@ end
 def Env.print (env : Env) (deps : Bool := true) : PrintM PUnit := do
   -- dbg_trace s!"\n\n NEW PRINT"
   withPrintDeps deps $ env.constMap.forM (fun _ const => do
-    if not ((← get).printedConsts.contains const.name) then
-      dbg_trace s!"printing: {const.name}"
+    -- if not ((← get).printedConsts.contains const.name) then
+    --   dbg_trace s!"printing: {const.name}"
     const.print)
 
 end Dedukti
