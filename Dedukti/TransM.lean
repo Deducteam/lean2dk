@@ -23,6 +23,7 @@ structure Context where
 structure State where
   env        : Env := default
   names      : Std.HashMap Name Name := default
+  cache      : Std.HashMap Lean.Expr Expr := default
   deriving Inhabited
 
 abbrev TransM := ReaderT Context $ StateT State MetaM

@@ -152,7 +152,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       printDkEnv dkEnv none
 
     if p.hasFlag "print" then
-      printDkEnv dkEnv $ .some constsNames
+      printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
     IO.print s!"{NOCOLOR}"
 
     return 0

@@ -42,6 +42,13 @@ def getStructureInfo? (env : Lean.Environment) (structName : Name) : TransM (Opt
   | some modIdx => pure $ Lean.structureExt.getModuleEntries env modIdx |>.binSearch { structName } Lean.StructureInfo.lt
   | none        => tthrow s!"structure not found: {structName}"
 
+def natZero : Lean.Expr := .const ``Nat.zero []
+def natSucc : Lean.Expr := .const ``Nat.succ []
+
+def natLitToConstructor : Nat → Lean.Expr
+  | 0 => natZero
+  | n+1 => .app natSucc (natLitToConstructor n)
+
 mutual
   partial def mkProjFn (induct : Name) (us : List Lean.Level) (params : Array Lean.Expr) (i : Nat) (major : Lean.Expr) : TransM Expr := do
     match ← getStructureInfo? (← read).env induct with
@@ -50,7 +57,15 @@ mutual
       | none => tthrow "projection function not found 2"
       | some projFn => fromExpr $ Lean.mkApp (Lean.mkAppN (Lean.mkConst projFn us) params) major
 
-  partial def fromExpr : Lean.Expr → TransM Expr
+  partial def fromExpr (e : Lean.Expr) : TransM Expr := do
+    if let some e' := (← get).cache.get? e then
+      pure e'
+    else
+      let e' ← fromExpr' e
+      modify fun s => {s with cache := s.cache.insert e e'}
+      pure e'
+
+  partial def fromExpr' : Lean.Expr → TransM Expr
     | .bvar _ => tthrow "unexpected bound variable encountered"
     | .sort lvl => do pure $ .app (.const `enc.Sort) (← fromLevel lvl) -- FIXME
     | .const name lvls => do
@@ -104,7 +119,12 @@ mutual
         let const := .definable letName type [.mk numVars lhs val]
         modify fun s => { s with env := {s.env with constMap := s.env.constMap.insert letName const} }
         withLet (x.fvarId!.name) $ fromExpr bod
-    | .lit lit => do pure $ .fixme "LIT.FIXME" -- FIXME
+    | .lit (.strVal s) => do pure $ .fixme "STRLIT.FIXME" -- FIXME
+    | .lit (.natVal n) => do
+      if n < 10 then
+        fromExpr $ natLitToConstructor n
+      else
+        pure $ .fixme s!"NATLIT.{n}.FIXME" -- FIXME
     | .proj n i s => do
       let sType' ← inferType s
       let sType ← whnf sType'
@@ -278,6 +298,7 @@ end
 
 def translateEnv (consts : Lean.NameSet) (transDeps : Bool := false) : TransM Unit := do
   for const in consts do
+    dbg_trace s!"DBG[5]: Trans.lean:292 {const}, {(← get).env.constMap.size}"
     withTransDeps transDeps $ transNamedConst const
 
 end Trans
