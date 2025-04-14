@@ -10,18 +10,18 @@ namespace Dedukti
 
 mutual
   inductive Expr
-    | var (idx : Nat) 
+    | var (name : Name) 
     | const (name : Name)
     | fixme (msg : String)
     | app (fn : Expr) (arg : Expr)
-    | lam (bod typ : Expr)
-    | pi (dom : Expr) (img : Expr)
+    | lam (n : Name) (bod typ : Expr)
+    | pi (n : Name) (dom : Expr) (img : Expr)
     | type
     | kind
-    deriving Repr, Inhabited
+    deriving Repr, Inhabited, BEq
 
   inductive Rule where
-    | mk (vars : Nat) (lhs : Expr) (rhs : Expr)
+    | mk (vars : List Name) (lhs : Expr) (rhs : Expr)
     deriving Repr, Inhabited
 
   inductive Const where
@@ -40,8 +40,8 @@ end Const
 
 namespace Expr
 
-def piN (params : List Expr) (img : Expr) : Expr :=
-  params.foldr (fun dom e => .pi dom e) img
+def piN (params : List (Name × Expr)) (img : Expr) : Expr :=
+  params.foldr (fun (n, dom) e => .pi n dom e) img
 
 def appN (head : Expr) (params : List Expr) : Expr :=
   params.foldl (fun e arg => .app e arg) head
