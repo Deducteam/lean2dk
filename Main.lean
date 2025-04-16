@@ -23,25 +23,25 @@ def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
 
 open Cli
 
-def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
+def printDkEnv (constMap : Lean.RBMap Name Const compare) (constsToModNames : Lean.RBMap Name Name compare) (only? : Option $ Lean.NameSet) (outFile : System.FilePath) (modName : Name) (nameMap : Std.HashMap Name Name) : IO Unit := do
   let printDeps := if let some _ := only? then false else true
 
   -- print Dedukti environment
-  match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print (deps := printDeps)) {env := dkEnv}) default)) with
+  match (ExceptT.run (StateT.run (ReaderT.run (print constMap (deps := printDeps) modName) {constMap, constsToModNames}) default)) with
     | .error s => throw $ IO.userError s
     | .ok (_, s) =>
       let dkEnvString := "\n\n".intercalate s.out
       if let some only := only? then
         for name in only do
           let maxConstPrint := 400 -- FIXME make "constant"
-          let name := fixLeanName 6 name
+          let name := nameMap.get! name
           let some constString := s.printedConsts.find? name | throw $ IO.userError s!"could not find symbol {name} in translated environment"
           let constString := if constString.length > maxConstPrint then constString.extract ⟨0⟩ ⟨maxConstPrint⟩ ++ "..." else constString
           IO.println $ "\n" ++ constString
       else
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
-        IO.FS.writeFile "dk/out.dk" dkEnvString
+        IO.FS.writeFile outFile dkEnvString
 
 unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
   let moduleArg := p.positionalArg! "input" |>.value
@@ -104,6 +104,10 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     for (pn, pi) in  ← getProjFns patchConstsDeps env do
       patchConstsDeps := patchConstsDeps.insert pn pi
 
+    let mut patchConsts := default
+    for (pn, _) in patchConstsDeps do
+      patchConsts := patchConsts.insert pn
+
     let mut onlyConstsDeps' ← Lean4Lean.getDepConstsEnv env (onlyConstsInit) overrides
     onlyConstsInit := #[]
     let mut onlyConstsDeps := default
@@ -112,7 +116,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         if !ci.isUnsafe && !ci.isPartial then
           onlyConstsDeps := onlyConstsDeps.insert n ci
           onlyConstsInit := onlyConstsInit.push n
-    
+
     for (pn, pi) in  ← getProjFns onlyConstsDeps env do
       onlyConstsDeps := onlyConstsDeps.insert pn pi
     
@@ -143,16 +147,30 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     printColor BLUE s!">> Translating {onlyConstsDeps.size} constants..."
 
     -- translate elaborated Lean environment to Dedukti
-    let (_, {env := dkEnv, ..}) ← (Trans.translateEnv constsNames (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env}
+    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames}
 
     -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
-    IO.print s!"{PURPLE}"
-    if write then
-      printDkEnv dkEnv none
+    let mut constsToModNames := default
+    let fixModName n :=
+      n |>.toStringWithSep "_" false |>.toName
+    for (mod, constMap) in dkEnv.constModMap do
+      for (constName, _) in constMap do
+        constsToModNames := constsToModNames.insert constName (fixModName mod)
 
-    if p.hasFlag "print" then
-      printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
+    IO.print s!"{PURPLE}"
+    let outDir := ((← IO.Process.getCurrentDir).join "dk" |>.join "out")
+    if (← outDir.pathExists) then
+      IO.FS.removeDirAll outDir
+    IO.FS.createDirAll outDir
+    if write then
+      for (mod, constMap) in dkEnv.constModMap do
+        dbg_trace s!"printing module: {mod} ({constMap.size} constants)"
+        let outFile := (outDir.join ↑((fixModName mod).toString ++ ".dk"))
+        printDkEnv constMap constsToModNames none outFile mod nameMap
+
+    -- if p.hasFlag "print" then
+    --   printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
     IO.print s!"{NOCOLOR}"
 
     return 0

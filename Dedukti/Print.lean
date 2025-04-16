@@ -1,4 +1,5 @@
 import Dedukti.Types
+import Dedukti.Util
 
 deriving instance Repr for Lean.ConstantVal
 
@@ -49,7 +50,8 @@ def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid nami
 
 
 structure PrintCtx where
-  env : Env
+  constMap : Lean.RBMap Name Const compare
+  constsToModNames : Lean.RBMap Name Name compare
   printDeps := true
   inLhs := false
   lvl : Nat := 0
@@ -95,6 +97,7 @@ structure PrintState where
   -/
   pendingRules : Lean.RBMap Name (List String) compare := default
   out : List String := []
+  cache : Std.HashMap Expr String := default
   deriving Inhabited
 
 abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
@@ -174,24 +177,30 @@ def updateRulesPrinted (const : Name) : PrintM Unit := do
 def setConstPrinted (name : Name) (str : String) : PrintM PUnit := do
   modify fun s => { s with printedConsts := s.printedConsts.insert name str }
   let size := (← get).printedConsts.size
-  if size % 1000 == 0 then
-    dbg_trace s!"{size} constants printed"
+  if size % 50 == 0 then
+    dbg_trace s!"{size}/{(← read).constMap.size} constants printed"
 
-partial def getPrintableRules : PrintM $ List String := do
+partial def getPrintableRules (dbg := false) : PrintM $ List String := do
   let mut rulesToPrint := []
   for (ruleConst, rules) in (← get).pendingRules do
     if (← get).pendingRules.find? ruleConst |>.isSome then -- TODO necessary because of in-place modification?
-      let anyRulePendingTypesRefs := (← get).rulePendingTypesRefs.find? ruleConst |>.isSome
+      let theRulePendingTypesRefs := (← get).rulePendingTypesRefs
+      let anyRulePendingTypesRefs := theRulePendingTypesRefs.find? ruleConst |>.isSome
 
-      let anyRuleTypesRefs := (← get).ruleTypesRefs.find? ruleConst |>.isSome
+      let theRuleTypesRefs := (← get).ruleTypesRefs.find? ruleConst
+      let anyRuleTypesRefs := theRuleTypesRefs |>.isSome
 
-      let anyTypeRefs := (← get).typeTypesRefs.find? ruleConst |>.isSome
+      let theTypesRefs := (← get).typeTypesRefs.find? ruleConst
+      let anyTypesRefs := theTypesRefs |>.isSome
 
-      let anyRuleTypesRhsRefs := (← get).ruleTypesRhsRefs.find? ruleConst |>.isSome
+      let theRuleTypesRhsRefs := (← get).ruleTypesRhsRefs.find? ruleConst
+      let anyRuleTypesRhsRefs := theRuleTypesRhsRefs |>.isSome
 
-      -- dbg_trace s!" {!anyRulePendingTypesRefs} && {!anyRuleTypesRefs} && {(← get).ruleTypesRefs.find? ruleConst |>.getD default |>.toList}, {ruleConst}"
+      if dbg then
+        dbg_trace s!"{ruleConst}: {!anyRulePendingTypesRefs} && {theTypesRefs.map (·.toList)} && {!anyRuleTypesRefs} && {!anyRuleTypesRhsRefs}, {ruleConst}"
+        -- dbg_trace s!" {!anyRulePendingTypesRefs} && {!anyRuleTypesRefs} && {(← get).ruleTypesRefs.find? ruleConst |>.getD default |>.toList}, {ruleConst}"
 
-      if !anyRulePendingTypesRefs && !anyRuleTypesRefs && !anyTypeRefs && !anyRuleTypesRhsRefs then
+      if !anyRulePendingTypesRefs && !anyRuleTypesRefs && !anyTypesRefs && !anyRuleTypesRhsRefs then
         updateRulesPrinted ruleConst
         modify fun s => { s with pendingRules := s.pendingRules.erase ruleConst} -- TODO in-place modification OK here?
         -- dbg_trace s!"OK to print rules for {ruleConst}"
@@ -274,12 +283,20 @@ mutual
         pure s!"[{varsString}] {← withInLhs true lhs.print} --> {← rhs.print}."
 
   partial def Expr.print (expr : Expr) : PrintM String := do
+    -- if let some e := (← get).cache.get? expr then
+    --   return e
+    -- let e ← expr.print'
+    -- modify fun s => {s with cache := s.cache.insert expr e}
+    -- pure e
+    expr.print'
+
+  partial def Expr.print' (expr : Expr) : PrintM String := do
     match expr with
     | .var n =>
       let some bn := (← read).fvarsToBvars.get? n | throw s!"could not find bound variable corresponding to free variable {n}, {(← read).printingType}, {(← read).printingRule}"
       pure bn.toString
     | .const name =>
-      if !((← get).printedConsts.contains name) && !(preludeConstNames.contains name) then
+      if ((← read).constMap.find? name).isSome && !((← get).printedConsts.contains name) && !(preludeConstNames.contains name) then
         if let some typeConst := (← read).printingType then
             -- if we encounter an unprinted type while printing a constant's type, register this constant's rules as pending on the printing of this type's rules
             addRefTypeInType typeConst name
@@ -298,9 +315,17 @@ mutual
             else
               -- print this constant first to make sure the DAG of constant dependencies
               -- is correctly linearized upon printing the .dk file
-              let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
+              let some const := (← read).constMap.find? name | throw s!"could not find referenced constant \"{name}\" (1), {(← read).constMap.toList.map (·.1)}"
               const.print
-      pure $ maybeQuote name
+      let prefix? ← do
+        if ((← read).constMap.find? name).isNone && !(preludeConstNames.contains name) then
+          let .some modName := (← read).constsToModNames.find? name | throw s!"could not find module prefix for constant {name}"
+          pure $ .some modName.toString
+        else pure none
+      if let some pref := prefix? then
+        pure $ pref ++ "." ++ maybeQuote name
+      else
+        pure $ maybeQuote name
     | .fixme msg => pure s!"Type (;{msg};)"
     | .app fn arg =>
       let fnExprString ← fn.print
@@ -359,18 +384,25 @@ mutual
         -- print all constants that the rules are dependent on
         let ruleTypesRefs := (← get).ruleTypesRefs.find? name |>.getD default
         for constName in ruleTypesRefs do
-          let some const := (← read).env.constMap.find? constName | throw s!"could not find referenced constant \"{constName}\""
+          let some const := (← read).constMap.find? constName | pure () -- throw s!"could not find referenced constant \"{constName}\" (2)"
           const.print
 
         -- dbg_trace s!"done printing: {name}"
 end
     
 -- if `name` is specified, only print that constant (without printing dependencies)
-def Env.print (env : Env) (deps : Bool := true) : PrintM PUnit := do
+def print (constMap : Lean.RBMap Name Const compare) (modName : Name) (deps : Bool := true) : PrintM PUnit := do
   -- dbg_trace s!"\n\n NEW PRINT"
-  withPrintDeps deps $ env.constMap.forM (fun _ const => do
+  withPrintDeps deps $ constMap.forM (fun _ const => do
     -- if not ((← get).printedConsts.contains const.name) then
     --   dbg_trace s!"printing: {const.name}"
     const.print)
+
+  if (← get).pendingRules.size > 0 then
+    -- for (name, _) in (← get).pendingRules do
+    --   dbg_trace s!"DBG[14]: Print.lean:397 {name}"
+    -- let rulesToPrint ← getPrintableRules true
+    -- dbg_trace s!"DBG[15]: Print.lean:398: rulesToPrint={rulesToPrint.length}"
+    throw s!"error: {(← get).pendingRules.size} pending rules remain unprinted for module {modName}"
 
 end Dedukti

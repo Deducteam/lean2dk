@@ -25,7 +25,7 @@ The command line arguments are:
 * `print` (`-p`): Print translation of specified constants to standard output (relevant only with '-o ...').
 * `write` (`-w`): Also write translation of specified constants (with dependencies) to file (relevant only with '-p').
 
-If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of their (transitive) dependencies, is output in the file `dk/out.dk` (alongside various other `.dk` files relating to the encoding).
+If `--only` is not specified, the translated environment, consisting of the translations of all of the constants in `MOD` + all of their (transitive) dependencies, is output in the folder `dk/out/` (with names corresponding to the original Lean modules).
 
 You can run the executable using `lake exe`. For instance, to translate the module `Init.Data.Nat.Lemmas` to Dedukti, run:
 ```
@@ -34,4 +34,9 @@ You can run the executable using `lake exe`. For instance, to translate the modu
 To translate only the definition `Classical.em`, and all of its dependencies, run:
 ```
  $ lake exe lean2dk Init.Classical --only Classical.em
+```
+
+To translate a different Lean package, navigate the directory of the target project, then use `lake env path/to/lean2dk/.lake/build/bin/lean2dk <args>` to run `lean2dk` in the context of the target project, for example:
+```
+ $ (cd ~/projects/mathlib4/ && lake env ~/projects/lean2dk/.lake/build/bin/lean2dk Mathlib.Data.Real.Basic --only Real)
 ```
