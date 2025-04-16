@@ -18,7 +18,7 @@ mutual
     | pi (n : Name) (dom : Expr) (img : Expr)
     | type
     | kind
-    deriving Repr, Inhabited, BEq
+    deriving Repr, Inhabited, BEq, Hashable
 
   inductive Rule where
     | mk (vars : List Name) (lhs : Expr) (rhs : Expr)
@@ -49,7 +49,7 @@ def appN (head : Expr) (params : List Expr) : Expr :=
 end Expr
 
 structure Env where
-  constMap : Lean.RBMap Name Const compare
+  constModMap : Lean.RBMap Name (Lean.RBMap Name Const compare) compare
   deriving Inhabited
 
 end Dedukti
