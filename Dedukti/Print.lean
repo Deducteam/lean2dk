@@ -53,6 +53,7 @@ structure PrintCtx where
   printDeps := true
   inLhs := false
   lvl : Nat := 0
+  fvarsToBvars : Std.HashMap Name Name := default
   /--
     Names of constants whose types are waiting to be printed;
     any rewrite rules that reference these constants should have their printing delayed.
@@ -99,7 +100,7 @@ structure PrintState where
 abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
 
 def withResetPrintMLevel : PrintM α → PrintM α :=
-  withReader fun ctx => { ctx with lvl := 0, printingRule := none, printingType := none }
+  withReader fun ctx => { ctx with lvl := 0, printingRule := none, printingType := none, fvarsToBvars := default }
 
 /--
   Registers `refTypeConst` as a type referenced by the rules of `ruleConst`.
@@ -213,12 +214,16 @@ def withInLhs (inLhs : Bool) : PrintM α → PrintM α :=
 def withPendingType (n : Name) : PrintM α → PrintM α :=
   withReader fun ctx => { ctx with pendingTypes := ctx.pendingTypes.insert n, printingType := some n }
 
-def withNewPrintMLevel : PrintM α → PrintM α :=
-  withReader fun ctx => { ctx with
-    lvl := ctx.lvl + 1 }
+def withNewPrintMLevel (fvarName : Name) (f : PrintM α) : PrintM α := do
+  withReader (fun ctx => { ctx with
+    lvl := ctx.lvl + 1,
+    fvarsToBvars := ctx.fvarsToBvars.insert fvarName s!"x{ctx.lvl}".toName
+  }) do
+    let ret ← f
+    pure ret
 
-def withSetPrintMLevel (lvl : Nat) : PrintM α → PrintM α :=
-  withReader fun ctx => { ctx with lvl }
+def withSetPrintMLevel (lvl : Nat) (fvarsToBvars : Std.HashMap Name Name) : PrintM α → PrintM α :=
+  withReader fun ctx => { ctx with lvl, fvarsToBvars }
 
 def dkExprNeedsFnParens : Expr → Bool
   | .var .. => false
@@ -258,17 +263,21 @@ def maybeQuote (name : Name) : String :=
 mutual
   partial def Rule.print (rule : Rule) : PrintM String := do
     match rule with
-    | .mk (vars : Nat) (lhs : Expr) (rhs : Expr) =>
+    | .mk (vars : List Name) (lhs : Expr) (rhs : Expr) =>
       let mut varsStrings := []
-      for i in [0:vars] do
+      let mut newFvarsToBvars := (← read).fvarsToBvars
+      for i in [0:vars.length] do
         varsStrings := varsStrings ++ [s!"x{i}"]
+        newFvarsToBvars := newFvarsToBvars.insert vars[i]! s!"x{i}".toName
       let varsString := ", ".intercalate varsStrings
-      withSetPrintMLevel vars do
+      withSetPrintMLevel vars.length newFvarsToBvars do
         pure s!"[{varsString}] {← withInLhs true lhs.print} --> {← rhs.print}."
 
   partial def Expr.print (expr : Expr) : PrintM String := do
     match expr with
-    | .var idx => pure s!"x{(← read).lvl - (idx + 1)}"
+    | .var n =>
+      let some bn := (← read).fvarsToBvars.get? n | throw s!"could not find bound variable corresponding to free variable {n}, {(← read).printingType}, {(← read).printingRule}"
+      pure bn.toString
     | .const name =>
       if !((← get).printedConsts.contains name) && !(preludeConstNames.contains name) then
         if let some typeConst := (← read).printingType then
@@ -299,11 +308,15 @@ mutual
       let argExprString ← arg.print
       let argString := if (dkExprNeedsArgParens arg) then s!"({argExprString})" else argExprString
       pure s!"{fnString} {argString}"
-    | .lam bod typ => pure s!"x{(← read).lvl} : {← typ.print} => {← withNewPrintMLevel $ bod.print}"
-    | .pi dom img =>
+    | .lam n bod typ =>
+      let bodStr ← withNewPrintMLevel n do bod.print
+      let ret := s!"x{(← read).lvl} : {← typ.print} => {bodStr}"
+      pure ret
+    | .pi n dom img =>
       let domExprString ← dom.print
+      let imgString ← withNewPrintMLevel n do img.print
       let domString := if dkExprNeedsTypeParens dom then s!"({domExprString})" else domExprString
-      pure s!"x{(← read).lvl}:{domString} -> {← withNewPrintMLevel $ img.print}"
+      pure s!"x{(← read).lvl}:{domString} -> {imgString}"
     | .type => pure "Type"
     | .kind => pure "Kind"
 

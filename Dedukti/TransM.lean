@@ -17,12 +17,13 @@ structure Context where
   env : Lean.Environment
   fvars     : Array Lean.Expr := default
   fvarTypes : Lean.RBMap Name Expr compare := default
-  lvars     : Lean.RBMap Name (Nat × Name) compare := default
-  lvlParams : Lean.RBMap Name Nat compare := default
+  lvars     : Lean.RBMap Name (Array Lean.Expr × Name) compare := default
+  lvlParams : Array Name := default
 
 structure State where
   env        : Env := default
   names      : Std.HashMap Name Name := default
+  cache      : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
   deriving Inhabited
 
 abbrev TransM := ReaderT Context $ StateT State MetaM
@@ -52,9 +53,7 @@ def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }
 
 def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
-  let lvlParams ← params.length.foldM (init := default) fun i _ curr =>  
-    pure $ curr.insert params[i]! i
-  withReader (fun ctx => { ctx with lvlParams }) m
+  withReader (fun ctx => { ctx with lvlParams := .mk params }) m
 
 def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   let newFvars := (← read).fvars.append fvars
@@ -87,10 +86,11 @@ def fixLeanName (id : Nat) (n : Name) : TransM Name := do
   modify fun s => {s with names := s.names.insert n ret}
   pure ret
 
+-- FIXME should count lets in state instead (what if lets are defined in parallel branches of the expression, will we have duplicate names?)
 def nextLetName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← read).numLets) |>.toName
 
-def withLet (varName : Name) (m : TransM α) : TransM α := do
-  let lvars := (← read).lvars.insert varName ((← read).fvars.size, ← nextLetName)
+def withLet (varName : Name) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
+  let lvars := (← read).lvars.insert varName (fvars, ← nextLetName)
   let numLets := (← read).numLets + 1
   withReader (fun ctx => { ctx with lvars, numLets}) m
 
