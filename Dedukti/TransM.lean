@@ -6,7 +6,9 @@ open Dedukti
 namespace Trans
 
 structure Context where
-  constName  : Name := default
+  constName : Name := default
+  constNameOrig : Name := default
+  modName : Name := default
   /-- Don't perform universe level normalization on variables; used in e.g. recursor rewrite rules. -/
   noLVarNormalize : Bool := false
   /-- Also translate any constant dependencies when they are encountered. -/
@@ -36,12 +38,45 @@ abbrev TransM := ReaderT Context $ StateT State MetaM
   pure (a, s)
 
 -- TODO is it normal to accumulate so many `withX` functions?
-
-def withNewConstant (constName : Name) (m : TransM α) : TransM α := do
-  withReader (fun ctx => { ctx with constName, numLets := 0 }) m
-
+--
 def tthrow (msg : String) : TransM α := do -- FIXME is there a way to make this work with the original "throw" function?
 throw $ .error default s!"{msg}\nWhile translating: {(← read).constName}"
+
+def addConst (modName constName : Name) (const : Const) : TransM Unit := do
+  let s ← get
+  let mut newConstModMap := (← get).env.constModMap
+
+  let mut newConstMap :=
+    if let some constMap := newConstModMap.find? modName then
+      constMap
+    else
+      default
+
+  newConstMap := newConstMap.insert constName const
+  newConstModMap := newConstModMap.insert modName newConstMap
+
+  set { s with env := {s.env with constModMap := newConstModMap} }
+
+def getModName (constName : Name) : TransM Name := do
+  let env := (← read).env
+  let .some modIdx := env.const2ModIdx.get? constName | tthrow s!"could not find module for '{constName}'"
+  pure env.header.moduleNames[modIdx]!
+
+def getConstMap (constName : Name) : TransM (Lean.RBMap Name Const compare) := do
+  let mut newConstModMap := (← get).env.constModMap
+
+  let mut newConstMap :=
+    if let some constMap := newConstModMap.find? (← getModName constName) then
+      constMap
+    else
+      default
+
+  pure newConstMap
+
+def withNewConstant (constNameOrig : Name) (m : TransM α) : TransM α := do
+  let modName ← getModName constNameOrig
+  let constName := fixLeanName 2 constNameOrig
+  withReader (fun ctx => { ctx with constName, constNameOrig, modName, numLets := 0 }) m
 
 def withResetCtx : TransM α → TransM α :=
   withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false }

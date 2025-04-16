@@ -5,7 +5,7 @@ node_modules
 /build/
 sess.vim
 /lake-packages/
-/dk/out.dk
+/dk/out/
 stdout
 /fixtures/stdlib/
 /fixtures/Prelude/

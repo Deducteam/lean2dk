@@ -23,11 +23,11 @@ def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
 
 open Cli
 
-def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
+def printDkEnv (constMap : Lean.RBMap Name Const compare) (only? : Option $ Lean.NameSet) (outName := "out.dk") : IO Unit := do
   let printDeps := if let some _ := only? then false else true
 
   -- print Dedukti environment
-  match (ExceptT.run (StateT.run (ReaderT.run (dkEnv.print (deps := printDeps)) {env := dkEnv}) default)) with
+  match (ExceptT.run (StateT.run (ReaderT.run (print constMap (deps := printDeps)) {constMap}) default)) with
     | .error s => throw $ IO.userError s
     | .ok (_, s) =>
       let dkEnvString := "\n\n".intercalate s.out
@@ -41,7 +41,11 @@ def printDkEnv (dkEnv : Env) (only? : Option $ Lean.NameSet) : IO Unit := do
       else
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
-        IO.FS.writeFile "dk/out.dk" dkEnvString
+        let outDir := ((← IO.Process.getCurrentDir).join "dk" |>.join "out")
+        if (← outDir.pathExists) then
+          IO.FS.removeDirAll outDir
+        IO.FS.createDirAll outDir
+        IO.FS.writeFile (outDir.join outName) dkEnvString
 
 unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
   let moduleArg := p.positionalArg! "input" |>.value
@@ -112,7 +116,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         if !ci.isUnsafe && !ci.isPartial then
           onlyConstsDeps := onlyConstsDeps.insert n ci
           onlyConstsInit := onlyConstsInit.push n
-    
+
     for (pn, pi) in  ← getProjFns onlyConstsDeps env do
       onlyConstsDeps := onlyConstsDeps.insert pn pi
     
@@ -149,10 +153,11 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
 
     IO.print s!"{PURPLE}"
     if write then
-      printDkEnv dkEnv none
+      for (mod, constMap) in dkEnv.constModMap do
+        printDkEnv constMap none ((fixLeanName 0 mod).toString ++ ".dk")
 
-    if p.hasFlag "print" then
-      printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
+    -- if p.hasFlag "print" then
+    --   printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
     IO.print s!"{NOCOLOR}"
 
     return 0

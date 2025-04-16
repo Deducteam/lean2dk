@@ -49,7 +49,7 @@ def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid nami
 
 
 structure PrintCtx where
-  env : Env
+  constMap : Lean.RBMap Name Const compare
   printDeps := true
   inLhs := false
   lvl : Nat := 0
@@ -95,6 +95,7 @@ structure PrintState where
   -/
   pendingRules : Lean.RBMap Name (List String) compare := default
   out : List String := []
+  cache : Std.HashMap Expr String := default
   deriving Inhabited
 
 abbrev PrintM := ReaderT PrintCtx $ StateT PrintState $ ExceptT String Id
@@ -274,6 +275,14 @@ mutual
         pure s!"[{varsString}] {← withInLhs true lhs.print} --> {← rhs.print}."
 
   partial def Expr.print (expr : Expr) : PrintM String := do
+    -- if let some e := (← get).cache.get? expr then
+    --   return e
+    -- let e ← expr.print'
+    -- modify fun s => {s with cache := s.cache.insert expr e}
+    -- pure e
+    expr.print'
+
+  partial def Expr.print' (expr : Expr) : PrintM String := do
     match expr with
     | .var n =>
       let some bn := (← read).fvarsToBvars.get? n | throw s!"could not find bound variable corresponding to free variable {n}, {(← read).printingType}, {(← read).printingRule}"
@@ -298,7 +307,7 @@ mutual
             else
               -- print this constant first to make sure the DAG of constant dependencies
               -- is correctly linearized upon printing the .dk file
-              let some const := (← read).env.constMap.find? name | throw s!"could not find referenced constant \"{name}\""
+              let some const := (← read).constMap.find? name | throw s!"could not find referenced constant \"{name}\""
               const.print
       pure $ maybeQuote name
     | .fixme msg => pure s!"Type (;{msg};)"
@@ -359,16 +368,16 @@ mutual
         -- print all constants that the rules are dependent on
         let ruleTypesRefs := (← get).ruleTypesRefs.find? name |>.getD default
         for constName in ruleTypesRefs do
-          let some const := (← read).env.constMap.find? constName | throw s!"could not find referenced constant \"{constName}\""
+          let some const := (← read).constMap.find? constName | throw s!"could not find referenced constant \"{constName}\""
           const.print
 
         -- dbg_trace s!"done printing: {name}"
 end
     
 -- if `name` is specified, only print that constant (without printing dependencies)
-def Env.print (env : Env) (deps : Bool := true) : PrintM PUnit := do
+def print (constMap : Lean.RBMap Name Const compare) (deps : Bool := true) : PrintM PUnit := do
   -- dbg_trace s!"\n\n NEW PRINT"
-  withPrintDeps deps $ env.constMap.forM (fun _ const => do
+  withPrintDeps deps $ constMap.forM (fun _ const => do
     -- if not ((← get).printedConsts.contains const.name) then
     --   dbg_trace s!"printing: {const.name}"
     const.print)
