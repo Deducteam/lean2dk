@@ -197,7 +197,9 @@ partial def getPrintableRules (dbg := false) : PrintM $ List String := do
       let anyRuleTypesRhsRefs := theRuleTypesRhsRefs |>.isSome
 
       if dbg then
-        dbg_trace s!"{ruleConst}: {!anyRulePendingTypesRefs} && {theTypesRefs.map (·.toList)} && {!anyRuleTypesRefs} && {!anyRuleTypesRhsRefs}, {ruleConst}"
+        -- dbg_trace s!"{ruleConst}: {!anyRulePendingTypesRefs} && {theTypesRefs.map (·.toList)} && {!anyRuleTypesRefs} && {!anyRuleTypesRhsRefs}"
+        dbg_trace s!"{ruleConst}: {!anyRulePendingTypesRefs} && {theTypesRefs.map (·.toList)} && {!anyRuleTypesRefs} && {(← get).ruleTypesRhsRefs.find? ruleConst |>.getD default |>.toList}"
+        dbg_trace s!"DBG[9]: Print.lean:202 {(← get).printedTypes.find! ruleConst}"
         -- dbg_trace s!" {!anyRulePendingTypesRefs} && {!anyRuleTypesRefs} && {(← get).ruleTypesRefs.find? ruleConst |>.getD default |>.toList}, {ruleConst}"
 
       if !anyRulePendingTypesRefs && !anyRuleTypesRefs && !anyTypesRefs && !anyRuleTypesRhsRefs then
@@ -401,8 +403,8 @@ def print (constMap : Lean.RBMap Name Const compare) (modName : Name) (deps : Bo
   if (← get).pendingRules.size > 0 then
     -- for (name, _) in (← get).pendingRules do
     --   dbg_trace s!"DBG[14]: Print.lean:397 {name}"
-    -- let rulesToPrint ← getPrintableRules true
-    -- dbg_trace s!"DBG[15]: Print.lean:398: rulesToPrint={rulesToPrint.length}"
-    throw s!"error: {(← get).pendingRules.size} pending rules remain unprinted for module {modName}"
+    let rulesToPrint ← getPrintableRules true
+    dbg_trace s!"DBG[15]: Print.lean:398: rulesToPrint={rulesToPrint.length}"
+    throw s!"error: {(← get).pendingRules.size} pending rules for {(← get).pendingRules.toList.map (·.1)} remain unprinted for module {modName}"
 
 end Dedukti

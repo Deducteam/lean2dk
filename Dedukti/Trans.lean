@@ -2,6 +2,8 @@ import Dedukti.Types
 import Dedukti.Encoding
 import Dedukti.Util
 
+-- fromExpr 22
+
 open Dedukti
 open Trans
 open Encoding
@@ -44,6 +46,9 @@ def getStructureInfo? (env : Lean.Environment) (structName : Name) : TransM (Opt
 
 def natZero : Lean.Expr := .const ``Nat.zero []
 def natSucc : Lean.Expr := .const ``Nat.succ []
+
+def _root_.Lean.Expr.containsLvlParam (e : Lean.Expr) (l : Name) : Bool :=
+  e.instantiateLevelParams [l] [.zero] == e
 
 def natLitToConstructor : Nat → Lean.Expr
   | 0 => natZero
@@ -98,54 +103,67 @@ mutual
           pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr 6 dom, (.lam domVar.fvarId!.name curr (← fromExprAsType dom))])
         pure (n - 1, ret, s3)
       pure ret
-    | .letE name T val bod _ => -- TODO recursive lets (with references in type)?
+    | .letE name T val bod _ =>
       withLetDecl name T val fun x => do
-        -- if (← read).constName == `Array.insertIdx.loop.eq_def then
-        --   dbg_trace s!"DBG[1]: {x}"
+        let TType ← inferType T
         let bod := bod.instantiate1 x
-        let dbg := (← read).constName == (← fixLeanName 0 `Array.swap)
-        -- if dbg then
-        --   dbg_trace s!"DBG[1]: {(← read).numLets}, {(← read).fvars}\n{val}"
-        let mut (_, (usedFVars : Lean.NameSet)) ← (← read).fvars.foldrM (init := (#[], default)) fun fvar (doms, acc) => do
-          if val.containsFVar fvar.fvarId! || doms.any (·.containsFVar fvar.fvarId!) then
-            -- if dbg then
-            --   dbg_trace s!"DBG[4]: Trans.lean:109 {fvar}, {(← inferType fvar)}"
+
+        let checkContains' (doms : Array Lean.Expr) (f : Lean.Expr → Bool) : Bool := 
+          f val || f T || f TType || doms.any (f ·)
+        -- let dbg := (← read).constName == (← fixLeanName 0 `Array.swap)
+        let mut (doms, (usedFVars : Lean.NameSet)) ← (← read).fvars.foldrM (init := (#[], default)) fun fvar (doms, acc) => do
+          if checkContains' doms (·.containsFVar fvar.fvarId!) then
             let doms := doms.push (← inferType fvar)
             let acc := acc.insert fvar.fvarId!.name
             return (doms, acc)
           pure (doms, acc)
 
+        let checkContains (f : Lean.Expr → Bool) : Bool := 
+          checkContains' doms f
+
         for (lvar, (fvarDeps, _)) in (← read).lvars do
-          if val.containsFVar (.mk lvar) then
+          if checkContains (·.containsFVar (.mk lvar)) then
             for fvar in fvarDeps do
               usedFVars := usedFVars.insert fvar.fvarId!.name
 
         let fvars := (← read).fvars.toList.filter (usedFVars.contains ·.fvarId!.name)
         -- if dbg then
         --   dbg_trace s!"DBG[5]: Trans.lean:116: fvars={fvars}"
-        let typ ← fvars.foldrM (init := ← fromExprAsType T) fun fvar acc => do
-          let name := fvar.fvarId!.name
-          let some dom ← do pure $ (← read).fvarTypes.find? name | tthrow s!"could not find type of free variable"
-          pure $ .pi name dom acc
-        let typ := (← read).lvlParams.foldr (init := typ) fun n curr => .pi n (.const `lvl.Lvl) curr
+        let mut usedLvlParams : Lean.NameSet := default
+        for lvlParam in (← read).lvlParams do
+          if checkContains (·.containsLvlParam lvlParam) then
+            usedLvlParams := usedLvlParams.insert lvlParam
 
-        let val ← fromExpr 7 val
-        let letName ← nextLetName
-        let vars := (← read).lvlParams ++ fvars.map (·.fvarId!.name)
+        let lvlParams := (← read).lvlParams.toList.filter (usedLvlParams.contains ·)
 
-        let mut levels := []
-        for param in (← read).lvlParams do
-          levels := [.var param] ++ levels
-        let lhs := (.appN (.const letName) (levels ++ (← fvars.mapM (fun fvar => fromExpr 8 fvar))))
-        -- if dbg then
-        --   dbg_trace s!"DBG[6]: Trans.lean:131: lhs={repr val}"
+        let const ← withLvlParams lvlParams do
+          let TTrans ← fromExprAsType T
+          let typ ← fvars.foldrM (init := TTrans) fun fvar acc => do
+            let name := fvar.fvarId!.name
+            -- if (← read).constName == `Classical.em then
+            let domTrans ← fromExprAsType (← inferType fvar)
+            -- let some dom ← do pure $ (← read).fvarTypes.find? name | tthrow s!"could not find type of free variable"
+            pure $ .pi name domTrans acc
 
-        -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
+          let typ := lvlParams.foldr (init := typ) fun n curr => .pi n (.const `lvl.Lvl) curr
 
-        let const := Const.definable letName typ [.mk vars.toList lhs val]
+          let valTrans ← fromExpr 7 val
+          let letName ← nextLetName
+          let vars := lvlParams ++ fvars.map (·.fvarId!.name)
 
-        addConst (← read).modName letName const
-        withLet (x.fvarId!.name) fvars.toArray $ fromExpr 9 bod
+          let mut levels := []
+          for param in lvlParams do
+            levels := levels ++ [.var param]
+          let lhs := (.appN (.const letName) (levels ++ (← fvars.mapM (fun fvar => fromExpr 8 fvar))))
+          -- if dbg then
+          --   dbg_trace s!"DBG[6]: Trans.lean:131: lhs={repr val}"
+
+          -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
+
+          pure $ Const.definable letName typ [.mk vars lhs valTrans]
+        addConst (← read).modName const.name const
+
+        withLet (x.fvarId!.name) fvars.toArray lvlParams.toArray $ fromExpr 9 bod
     | .lit (.strVal s) => do pure $ .fixme "STRLIT.FIXME" -- FIXME
     | .lit (.natVal n) => do
       if n < 10 then
@@ -165,9 +183,15 @@ mutual
       | true => pure $ .var id.name
       | false =>
         match (← read).lvars.find? id.name with
-        | some (fvars, constName) => do
-          let letVarApp ← (← read).lvlParams.foldlM (init := (.const constName))
-            fun app n => do pure $ .app app $ .var n
+        | some (fvars, lvlParams, constName) => do
+          let lvls ← lvlParams.toList.mapM fun param => do
+            let l ← fromLevel' (.param param)
+            (l.inst).toExpr
+
+          let letVarApp := .appN (.const constName) lvls
+            -- fun app n => do
+            --   dbg_trace s!"DBG[14]: Trans.lean:188 {constName}, {n}"
+            --   pure $ .app app $ .var n -- TODO FIXME properly translate universe levels
           fvars.foldlM (init := letVarApp)
             fun app n => do pure $ .app app $ .var n.fvarId!.name
         | _ => tthrow s!"encountered unknown free variable {e}"

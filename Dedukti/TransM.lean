@@ -13,21 +13,22 @@ structure Context where
   noLVarNormalize : Bool := false
   /-- Also translate any constant dependencies when they are encountered. -/
   transDeps : Bool := false
-  /-- Counter for lets encountered in a constant,
-  to allow for uniquely naming auxilliary let definitions. -/
-  numLets    : Nat := 0
   env : Lean.Environment
   consts : Lean.NameSet
   patchConsts : Lean.NameSet
   fvars     : Array Lean.Expr := default
   fvarTypes : Lean.RBMap Name Expr compare := default
-  lvars     : Lean.RBMap Name (Array Lean.Expr × Name) compare := default
+  lvars     : Lean.RBMap Name (Array Lean.Expr × Array Name × Name) compare := default
   lvlParams : Array Name := default
 
 structure State where
-  env        : Env := default
-  names      : Std.HashMap Name Name := default
-  cache      : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
+  env      : Env := default
+  names    : Std.HashMap Name Name := default
+  cache    : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
+  /-- Counter for lets encountered in a constant,
+  to allow for uniquely naming auxilliary let definitions. -/
+  numLets  : Nat := 0
+  numAux   : Nat := 0
   deriving Inhabited
 
 abbrev TransM := ReaderT Context $ StateT State MetaM
@@ -109,7 +110,11 @@ def fixLeanName (id : Nat) (n : Name) : TransM Name := do
 def withNewConstant (constNameOrig : Name) (m : TransM α) : TransM α := do
   let modName ← getModName constNameOrig
   let constName ← fixLeanName 2 constNameOrig
-  withReader (fun ctx => { ctx with constName, constNameOrig, modName, numLets := 0 }) m
+  let origNumLets := (← get).numLets
+  modify fun s => {s with numLets := 0}
+  let ret ← withReader (fun ctx => { ctx with constName, constNameOrig, modName }) m
+  modify fun s => {s with numLets := origNumLets}
+  pure ret
 
 def withResetCtx : TransM α → TransM α :=
   withReader fun ctx => { ctx with fvars := #[], lvlParams := default, noLVarNormalize := false }
@@ -128,12 +133,34 @@ def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Exp
   let newFvarTypes := (← read).fvarTypes.mergeBy (fun _ _ t => t) fvarTypes
   withReader (fun ctx => { ctx with fvarTypes := newFvarTypes, fvars := newFvars }) m
 
--- FIXME should count lets in state instead (what if lets are defined in parallel branches of the expression, will we have duplicate names?)
-def nextLetName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← read).numLets) |>.toName
+def nextAuxName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← get).numLets) |>.toName
 
-def withLet (varName : Name) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
-  let lvars := (← read).lvars.insert varName (fvars, ← nextLetName)
-  let numLets := (← read).numLets + 1
-  withReader (fun ctx => { ctx with lvars, numLets}) m
+-- def mkAuxConst (modName p : Name) (expr : Expr) : TransM Unit := do
+--   let s ← get
+--   let mut newConstModMap := (← get).env.constModMap
+--
+--   let mut newConstMap :=
+--     if let some constMap := newConstModMap.find? modName then
+--       constMap
+--     else
+--       default
+--
+--   let auxName := 
+--   let numAux := (← get).numAux + 1
+--   modify fun s => {s with numAux}
+--
+--   let constName ← nextAuxName
+--   newConstMap := newConstMap.insert constName const
+--   newConstModMap := newConstModMap.insert modName newConstMap
+--
+--   set { s with env := {s.env with constModMap := newConstModMap} }
+
+def nextLetName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← get).numLets) |>.toName
+
+def withLet (varName : Name) (fvars : Array Lean.Expr) (lvls : Array Name) (m : TransM α) : TransM α := do
+  let lvars := (← read).lvars.insert varName (fvars, lvls, ← nextLetName)
+  let numLets := (← get).numLets + 1
+  modify fun s => {s with numLets}
+  withReader (fun ctx => { ctx with lvars }) m
 
 end Trans
