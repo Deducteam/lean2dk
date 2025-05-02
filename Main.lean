@@ -21,6 +21,47 @@ abbrev NOCOLOR    := "\x1b[0m"
 def eprintColor (color s : String) := IO.eprintln s!"{color}{s}{NOCOLOR}"
 def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
 
+structure ForEachModuleState where
+  moduleNameSet : Std.HashSet Name := {}
+  count := 0
+
+-- def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx) (modIdx : Nat) (cname : Name) : IO α := do
+--   let modName := s.moduleNames[modIdx]!
+--   let constModName := s.moduleNames[const2ModIdx[cname]!.toNat]!
+--   throw <| IO.userError s!"import {modName} failed, environment already contains '{cname}' from {constModName}"
+
+abbrev ForEachModuleM := StateRefT ForEachModuleState IO
+
+@[inline] nonrec def ForEachModuleM.run (x : ForEachModuleM α) (s : ForEachModuleState := {}) : IO α := do
+  pure (← x.run s).1
+
+open Lean in
+partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Name × ModuleData) := do
+  let mut leafs := #[]
+  for i in imports do
+    if i.runtimeOnly || (← get).moduleNameSet.contains i.module then
+      continue
+    let mFile ← findOLean i.module
+    unless (← mFile.pathExists) do
+      throw <| IO.userError s!"object file '{mFile}' of module {i.module} does not exist"
+    let (mod, _) ← readModuleData mFile
+    let modLeafs ← getLeafModules mod.imports
+    if modLeafs.size == 0 then
+      modify fun s => { s with moduleNameSet := s.moduleNameSet.insert i.module }
+      leafs := leafs.push (i.module, mod)
+    leafs := leafs ++ modLeafs
+  pure leafs
+
+open Lean in
+partial def getOrderedModules (env : Environment) : ForEachModuleM (Array Name) := do
+  let imports := env.imports
+  let mut ret := #[]
+  while true do
+    let leafs ← getLeafModules imports
+    if leafs.size == 0 then break
+    ret := ret ++ leafs.map (·.1)
+  pure ret
+
 open Cli
 
 def printDkEnv (constMap : Lean.RBMap Name Const compare) (constsToModNames : Lean.RBMap Name Name compare) (only? : Option $ Lean.NameSet) (outFile : System.FilePath) (modName : Name) (nameMap : Std.HashMap Name Name) : IO Unit := do
@@ -42,6 +83,8 @@ def printDkEnv (constMap : Lean.RBMap Name Const compare) (constsToModNames : Le
         let dkPrelude := "#REQUIRE normalize.\n"
         let dkEnvString := dkPrelude ++ dkEnvString ++ "\n"
         IO.FS.writeFile outFile dkEnvString
+
+abbrev auxLvlModName := `AuxLvls
 
 unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
   let moduleArg := p.positionalArg! "input" |>.value
@@ -147,7 +190,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     printColor BLUE s!">> Translating {onlyConstsDeps.size} constants..."
 
     -- translate elaborated Lean environment to Dedukti
-    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames}
+    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames, orderedModules := ← getOrderedModules env |>.run}
 
     -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
@@ -158,16 +201,23 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       for (constName, _) in constMap do
         constsToModNames := constsToModNames.insert constName (fixModName mod)
 
+    for (auxLvlName, _) in dkEnv.auxLvlMap do
+      constsToModNames := constsToModNames.insert auxLvlName auxLvlModName
+
     IO.print s!"{PURPLE}"
     let outDir := ((← IO.Process.getCurrentDir).join "dk" |>.join "out")
     if (← outDir.pathExists) then
       IO.FS.removeDirAll outDir
     IO.FS.createDirAll outDir
     if write then
-      for (mod, constMap) in dkEnv.constModMap do
+      let printMod mod constMap := do
         dbg_trace s!"printing module: {mod} ({constMap.size} constants)"
         let outFile := (outDir.join ↑((fixModName mod).toString ++ ".dk"))
         printDkEnv constMap constsToModNames none outFile mod nameMap
+
+      printMod auxLvlModName dkEnv.auxLvlMap
+      for (mod, constMap) in dkEnv.constModMap do
+        printMod mod constMap
 
     -- if p.hasFlag "print" then
     --   printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
