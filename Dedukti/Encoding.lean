@@ -14,13 +14,14 @@ namespace Encoding
     | imax   : Level → Level → Level
     | var    : Name → Nat → Level
     | inst   : Level → Level
+    | aux    : Name → (List Level) → Level
 
   namespace Level
     def natToExpr : Nat → Dedukti.Expr 
     | 0 => .const `nat.z
     | n + 1 => .app (.const `nat.s) (natToExpr n)
 
-    def toExpr : Level → Trans.TransM Dedukti.Expr
+    partial def toExpr : Level → Trans.TransM Dedukti.Expr
       | .z          => pure $ .const `lvl.z
       | .s l        => do pure $ .app (.const `lvl.s ) (← toExpr l)
       | .max l1 l2  => do pure $ .appN (.const `lvl.max ) [(← toExpr l1), (← toExpr l2)]
@@ -33,6 +34,7 @@ namespace Encoding
         else
           pure $ .appN (.const `lvl.var) [natToExpr i, var]
       | .inst l    => do pure $ .app (.const `lvl.inst) (← toExpr l)
+      | .aux n ls    => do pure $ .appN (.const n) (← ls.mapM (fun l => do pure $ .app (.const `lvl.inst) (← toExpr l)))
       -- | var n      => .app (.const `lvl.var ) (natToExpr n) -- TODO deep encoding
 
   end Level

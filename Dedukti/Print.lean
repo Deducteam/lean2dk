@@ -321,7 +321,11 @@ mutual
               const.print
       let prefix? ← do
         if ((← read).constMap.find? name).isNone && !(preludeConstNames.contains name) then
-          let .some modName := (← read).constsToModNames.find? name | throw s!"could not find module prefix for constant {name}"
+          let modName ←
+            if let .some modName := (← read).constsToModNames.find? name then
+              pure modName
+            else
+              throw s!"could not find module prefix for constant {name}"
           pure $ .some modName.toString
         else pure none
       if let some pref := prefix? then

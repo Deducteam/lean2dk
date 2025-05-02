@@ -50,6 +50,7 @@ end Expr
 
 structure Env where
   constModMap : Lean.RBMap Name (Lean.RBMap Name Const compare) compare
+  auxLvlMap : Lean.RBMap Name Const compare
   deriving Inhabited
 
 end Dedukti
