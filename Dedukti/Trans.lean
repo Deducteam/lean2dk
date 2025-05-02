@@ -11,27 +11,110 @@ open Lean.Meta
 
 namespace Trans
 
-def fromLevel' : Lean.Level → TransM Level
-  | .zero       => pure .z
-  | .succ l     => do pure $ .s (← fromLevel' l)
-  | .max l1 l2  => do pure $ .max (← fromLevel' l1) (← fromLevel' l2)
-  | .imax l1 l2 => do pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
-  | .param p    => do
-     let some i := (← read).lvlParams.idxOf? p
-      | tthrow s!"unknown universe parameter {p} encountered"
-     -- dbg_trace s!"{p}: {i}"
-     pure $ .var p i
-  | .mvar _     => tthrow "unexpected universe metavariable encountered"
+def _root_.Lean.Level.containsLvlParam (l : Lean.Level) (n : Name) : Bool :=
+  go l
+where
+  go (u : Lean.Level) : Bool :=
+    match u with
+    | .zero       => false
+    | .succ v     => if u.hasParam then (go v) else false
+    | .max v₁ v₂  => if u.hasParam then (go v₁) || (go v₂) else false
+    | .imax v₁ v₂ => if u.hasParam then (go v₁) || (go v₂) else false
+    | .param n'   => n' == n
+    | _ => false
 
-def fromLevel (l : Lean.Level) : TransM Expr := do (← fromLevel' l).toExpr
+def _root_.Lean.Expr.containsLvlParam (e : Lean.Expr) (n : Name) : Bool :=
+  match e with
+    | .forallE _ d b _ => d.containsLvlParam n || b.containsLvlParam n
+    | .lam _ d b _     => d.containsLvlParam n || b.containsLvlParam n
+    | .mdata _ b       => b.containsLvlParam n
+    | .letE _ t v b _  => t.containsLvlParam n || v.containsLvlParam n || b.containsLvlParam n
+    | .app f a         => f.containsLvlParam n || a.containsLvlParam n
+    | .proj _ _ b      => b.containsLvlParam n
+    | .const _ lvls    => lvls.any (·.containsLvlParam n)
+    | .sort l          => l.containsLvlParam n
+    | _                => false
 
-def levelFromExpr (expr : Lean.Expr) : TransM Level := do
+def fromLevelParam (p : Name) : TransM Level := do
+  let some i := (← read).lvlParams.idxOf? p
+    | tthrow s!"unknown universe parameter '{p}' encountered ({(← read).lvlParams})"
+  -- dbg_trace s!"{p}: {i}"
+  pure $ .var p i
+
+def useAuxLvls := true
+
+partial def fromLevel' (l : Lean.Level) : TransM Level := do
+  if let .param p := l then
+    return ← fromLevelParam p
+
+  if useAuxLvls then
+    if let some (params, n) := (← get).lvlAuxCache.get? l then
+      let lvls ← params.toList.mapM fun param => do
+        fromLevelParam param
+      pure $ .aux n lvls
+    else
+      let mut usedLvlParams : Lean.NameSet := default
+      for lvlParam in (← read).lvlParams do
+        if (l.containsLvlParam lvlParam) then
+          usedLvlParams := usedLvlParams.insert lvlParam
+      let lvlParams := (← read).lvlParams.filter (usedLvlParams.contains ·)
+      let typ : Expr := lvlParams.foldr (init := (.const `lvl.Lvl)) fun n curr => .pi n (.const `lvl.Lvl) curr
+      let valLvl : Level ← withLvlParams 0 lvlParams.toList do
+        match l with
+        | .zero       => pure .z
+        | .succ l     => pure $ .s (← fromLevel' l)
+        | .max l1 l2  => pure $ .max (← fromLevel' l1) (← fromLevel' l2)
+        | .imax l1 l2 => pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
+        | .param p    => fromLevelParam p
+        | .mvar _     => tthrow "unexpected universe metavariable encountered"
+      let val := lvlParams.foldr (init := ← valLvl.toExpr) fun n curr => .lam n curr (.const `lvl.Lvl)
+
+      -- if l == .imax (.param `u) .zero then
+      --   let e := (Lean.Expr.sort l)
+      --   dbg_trace s!"DBG[27]: Trans.lean:48 {lvlParams}, {e.containsLvlParam `v}, {e}, {e.instantiateLevelParams [`v] [.zero]}"
+
+      let auxName ← newAuxLvlName
+
+      let lhs := .const auxName
+      -- if dbg then
+      --   dbg_trace s!"DBG[6]: Trans.lean:131: lhs={repr val}"
+
+      -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
+
+      let const := Const.definable auxName typ [.mk [] lhs val]
+      addAuxLvl const.name const
+      modify fun s => {s with lvlAuxCache := s.lvlAuxCache.insert l (lvlParams, auxName)}
+      let lvls ← lvlParams.mapM fun param => do
+        fromLevelParam param
+      pure $ .aux const.name lvls.toList
+  else
+    match l with
+    | .zero       => pure .z
+    | .succ l     => pure $ .s (← fromLevel' l)
+    | .max l1 l2  => pure $ .max (← fromLevel' l1) (← fromLevel' l2)
+    | .imax l1 l2 => pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
+    | .param p    => fromLevelParam p
+    | .mvar _     => tthrow "unexpected universe metavariable encountered"
+
+def fromLevel (l : Lean.Level) : TransM Expr := do 
+  let ret ← (← fromLevel' l).toExpr
+  pure ret
+
+def levelFromExpr (expr : Lean.Expr) : TransM Expr := do
   match expr with
-    | .sort l => pure $ ← fromLevel' l
+    | .sort l => pure $ ← fromLevel l
     | _ => tthrow s!"expected sort but encountered {expr.ctorName} -- {expr.dbgToString}"
     
-def levelFromInferredType (e : Lean.Expr) : TransM Level := do
+def levelFromInferredType (e : Lean.Expr) : TransM Expr := do
   levelFromExpr $ ← reduceAll $ ← inferType e
+
+def leanLevelFromExpr (expr : Lean.Expr) : TransM Lean.Level := do
+  match expr with
+    | .sort l => pure l
+    | _ => tthrow s!"expected sort but encountered {expr.ctorName} -- {expr.dbgToString}"
+
+def leanLevelFromInferredType (e : Lean.Expr) : TransM Lean.Level := do
+  leanLevelFromExpr $ ← reduceAll $ ← inferType e
 
 def dupParams (origParams : Array Lean.Expr) : TransM (Array (Name × Lean.BinderInfo × (Array Lean.Expr → TransM Lean.Expr))) := 
   origParams.foldlM (init := #[]) fun x param => do
@@ -46,9 +129,6 @@ def getStructureInfo? (env : Lean.Environment) (structName : Name) : TransM (Opt
 
 def natZero : Lean.Expr := .const ``Nat.zero []
 def natSucc : Lean.Expr := .const ``Nat.succ []
-
-def _root_.Lean.Expr.containsLvlParam (e : Lean.Expr) (l : Name) : Bool :=
-  e.instantiateLevelParams [l] [.zero] == e
 
 def natLitToConstructor : Nat → Lean.Expr
   | 0 => natZero
@@ -82,8 +162,8 @@ mutual
         transNamedConst name
       -- dbg_trace s!"translating const {name} with levels: {lvls} --> {repr $ ← lvls.mapM fromLevel}"
       pure $ (.appN (.const $ ← fixLeanName 1 name) (← lvls.mapM fun lvl => do
-          let l ← fromLevel' lvl
-          (l.inst).toExpr
+          let l ← fromLevel lvl
+          pure $ .app (.const `lvl.inst) l
         ))
     | e@(.app (.lam _ _ _ _) _) => do
       pure (← fromExpr 1 $ ← Lean.Core.betaReduce e) -- immediately reduce beta-redexes, as unannotated lambdas are not allowed in Dedukti (FIXME can use full reduction once subsingleton elimination has been implemented)
@@ -94,13 +174,13 @@ mutual
         pure (i + 1, (.lam v.fvarId!.name curr (← withTypedFVars domVars[:domVars.size - i] $ fromExprAsType (← inferType v))))
       pure ret
     | e@(.forallE ..) => forallTelescope e fun domVars img => do
-      let (_, ret, _) ← domVars.foldrM (init := (domVars.size - 1, ← withTypedFVars domVars $ fromExpr 5 img, ← levelFromInferredType img)) fun domVar (n, curr, s2) => do
+      let (_, ret, _) ← domVars.foldrM (init := (domVars.size - 1, ← withTypedFVars domVars $ fromExpr 5 img, ← leanLevelFromInferredType img)) fun domVar (n, curr, s2) => do
         let dom ← inferType domVar
-        let s1 ← levelFromInferredType dom
-        let s3 := Level.imax s1 s2
+        let s1 ← leanLevelFromInferredType dom
+        let s3 := .imax s1 s2
         --(.pi (.appN (.const `El) [(.var 0)]) (.app (.const `Univ) (.var 3)))
         let ret ← withTypedFVars domVars[:n] do -- TODO probably not necessary to do `withTypedFVars` here (can get domain from (← read).fvarTypes, and the sorts shouldn't contain free variables)
-          pure (.appN (.const `enc.Pi) [← s1.toExpr, ← s2.toExpr, ← s3.toExpr, ← fromExpr 6 dom, (.lam domVar.fvarId!.name curr (← fromExprAsType dom))])
+          pure (.appN (.const `enc.Pi) [← fromLevel s1, ← fromLevel s2, ← fromLevel s3, ← fromExpr 6 dom, (.lam domVar.fvarId!.name curr (← fromExprAsType dom))])
         pure (n - 1, ret, s3)
       pure ret
     | .letE name T val bod _ =>
@@ -136,7 +216,7 @@ mutual
 
         let lvlParams := (← read).lvlParams.toList.filter (usedLvlParams.contains ·)
 
-        let const ← withLvlParams lvlParams do
+        let const ← withLvlParams 1 lvlParams do
           let TTrans ← fromExprAsType T
           let typ ← fvars.foldrM (init := TTrans) fun fvar acc => do
             let name := fvar.fvarId!.name
@@ -185,8 +265,8 @@ mutual
         match (← read).lvars.find? id.name with
         | some (fvars, lvlParams, constName) => do
           let lvls ← lvlParams.toList.mapM fun param => do
-            let l ← fromLevel' (.param param)
-            (l.inst).toExpr
+            let l ← fromLevel (.param param)
+            pure $ .app (.const `lvl.inst) l
 
           let letVarApp := .appN (.const constName) lvls
             -- fun app n => do
@@ -199,7 +279,9 @@ mutual
     | .mdata _ e => fromExpr 11 e
 
   partial def fromExprAsType (e : Lean.Expr) : TransM Expr := do
-    pure $ .appN (.const `enc.El) [← (← levelFromInferredType e).toExpr, (← fromExpr 12 e)]
+    let lvl ← levelFromInferredType e 
+    let e ← fromExpr 12 e
+    pure $ .appN (.const `enc.El) [lvl, e]
 
   partial def withTypedFVars {α : Type} (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
     let (fvarTypes, fvars) ← fvars.foldlM (init := (default, #[])) fun (fvarTypes, fvars) fvar => do
@@ -212,7 +294,7 @@ mutual
     withFVars fvarTypes fvars m
 
   partial def constFromConstantInfo (env : Lean.Environment) (cnst : Lean.ConstantInfo) : TransM Const := do
-  withNewConstant cnst.name $ withResetCtx $ withLvlParams cnst.levelParams do
+  withNewConstant cnst.name $ withResetCtx $ withLvlParams 2 cnst.levelParams do
     let name := (← read).constName
     let nameOrig := (← read).constNameOrig
     let type ← fromExprAsType cnst.type

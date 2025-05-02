@@ -14,6 +14,7 @@ structure Context where
   /-- Also translate any constant dependencies when they are encountered. -/
   transDeps : Bool := false
   env : Lean.Environment
+  orderedModules : Array Name
   consts : Lean.NameSet
   patchConsts : Lean.NameSet
   fvars     : Array Lean.Expr := default
@@ -22,9 +23,12 @@ structure Context where
   lvlParams : Array Name := default
 
 structure State where
-  env      : Env := default
-  names    : Std.HashMap Name Name := default
-  cache    : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
+  env              : Env := default
+  names            : Std.HashMap Name Name := default
+  constsToModNames : Std.HashMap Name Name := default
+  cache       : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
+  lvlAuxCache : Std.HashMap Lean.Level (Array Name × Name) := default
+  numLvlAux   : Nat := 0
   /-- Counter for lets encountered in a constant,
   to allow for uniquely naming auxilliary let definitions. -/
   numLets  : Nat := 0
@@ -58,7 +62,37 @@ def addConst (modName constName : Name) (const : Const) : TransM Unit := do
   newConstMap := newConstMap.insert constName const
   newConstModMap := newConstModMap.insert modName newConstMap
 
-  set { s with env := {s.env with constModMap := newConstModMap} }
+  set { s with env := {s.env with constModMap := newConstModMap}, constsToModNames := s.constsToModNames.insert constName modName }
+
+def addAuxLvl (name : Name) (const : Const) : TransM Unit := do
+  modify fun s => { s with env := {s.env with auxLvlMap := s.env.auxLvlMap.insert name const} }
+
+def resetConstMod (constName oldModName newModName: Name) : TransM Unit := do
+  let s ← get
+  if oldModName == newModName then return
+
+  let some oldConstMap := (← get).env.constModMap.find? oldModName | throw $ .error default "resetConstMod error"
+  let some const := oldConstMap.find? constName | throw $ .error default "resetConstMod error"
+
+  let some newConstMap := (← get).env.constModMap.find? newModName | throw $ .error default "resetConstMod error"
+
+  let mut newConstModMap := (← get).env.constModMap
+  newConstModMap := newConstModMap.insert oldModName (oldConstMap.erase constName)
+  newConstModMap := newConstModMap.insert newModName (newConstMap.insert constName const)
+
+  set { s with env := {s.env with constModMap := newConstModMap}, constsToModNames := s.constsToModNames.insert constName newModName }
+
+def modImports (m1 m2 : Name) : TransM Bool := do
+  let some m1Idx := (← read).orderedModules.idxOf? m1 | throw $ .error default "modImports error"
+  let some m2Idx := (← read).orderedModules.idxOf? m2 | throw $ .error default "modImports error"
+  return m2Idx < m1Idx
+  -- return (← read).env.allImportedModuleNames.contains
+
+def maybeSwapMod (constName : Name) : TransM Unit := do
+  let currMod := (← read).modName
+  let some oldModName := (← get).constsToModNames.get? constName | throw $ .error default "maybeSwapMod error"
+  if ← modImports oldModName currMod then
+    resetConstMod constName oldModName currMod
 
 def getModName (constName : Name) : TransM Name := do
   let env := (← read).env
@@ -125,8 +159,9 @@ def withNoLVarNormalize : TransM α → TransM α :=
 def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }
 
-def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
-  withReader (fun ctx => { ctx with lvlParams := .mk params }) m
+def withLvlParams (n : Nat) (params : List Name) (m : TransM α) : TransM α := do
+  let ret ← withReader (fun ctx => { ctx with lvlParams := .mk params }) m
+  pure ret
 
 def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   let newFvars := (← read).fvars.append fvars
@@ -134,6 +169,12 @@ def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Exp
   withReader (fun ctx => { ctx with fvarTypes := newFvarTypes, fvars := newFvars }) m
 
 def nextAuxName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← get).numLets) |>.toName
+
+def newAuxLvlName : TransM Name := do
+  let ret ← fixLeanName 0 $ "lvl_aux" ++ (toString (← get).numLvlAux) |>.toName
+  modify fun s => {s with numLvlAux := s.numLvlAux + 1}
+  pure ret
+
 
 -- def mkAuxConst (modName p : Name) (expr : Expr) : TransM Unit := do
 --   let s ← get
