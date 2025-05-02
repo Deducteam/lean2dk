@@ -22,9 +22,11 @@ structure Context where
   lvlParams : Array Name := default
 
 structure State where
-  env      : Env := default
-  names    : Std.HashMap Name Name := default
-  cache    : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
+  env         : Env := default
+  names       : Std.HashMap Name Name := default
+  cache       : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
+  lvlAuxCache : Std.HashMap Lean.Level (Array Name × Name) := default
+  numLvlAux   : Nat := 0
   /-- Counter for lets encountered in a constant,
   to allow for uniquely naming auxilliary let definitions. -/
   numLets  : Nat := 0
@@ -125,8 +127,9 @@ def withNoLVarNormalize : TransM α → TransM α :=
 def withTransDeps (transDeps : Bool) : TransM α → TransM α :=
   withReader fun ctx => { ctx with transDeps := transDeps }
 
-def withLvlParams (params : List Name) (m : TransM α) : TransM α := do
-  withReader (fun ctx => { ctx with lvlParams := .mk params }) m
+def withLvlParams (n : Nat) (params : List Name) (m : TransM α) : TransM α := do
+  let ret ← withReader (fun ctx => { ctx with lvlParams := .mk params }) m
+  pure ret
 
 def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Expr) (m : TransM α) : TransM α := do
   let newFvars := (← read).fvars.append fvars
@@ -134,6 +137,12 @@ def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Exp
   withReader (fun ctx => { ctx with fvarTypes := newFvarTypes, fvars := newFvars }) m
 
 def nextAuxName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← get).numLets) |>.toName
+
+def newAuxLvlName : TransM Name := do
+  let ret ← fixLeanName 0 $ "lvl_aux" ++ (toString (← get).numLvlAux) |>.toName
+  modify fun s => {s with numLvlAux := s.numLvlAux + 1}
+  pure ret
+
 
 -- def mkAuxConst (modName p : Name) (expr : Expr) : TransM Unit := do
 --   let s ← get
