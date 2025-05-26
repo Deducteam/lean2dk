@@ -203,20 +203,19 @@ mutual
             return (doms, acc)
           pure (doms, acc)
 
-        let checkContains (f : Lean.Expr → Bool) : Bool := 
-          checkContains' doms f
-
         for (lvar, (fvarDeps, _)) in (← read).lvars do
-          if checkContains (·.containsFVar (.mk lvar)) then
+          if checkContains' doms (·.containsFVar (.mk lvar)) then
             for fvar in fvarDeps do
-              usedFVars := usedFVars.insert fvar.fvarId!.name
+              if not (usedFVars.contains fvar.fvarId!.name) then
+                doms := doms.push (← inferType fvar)
+                usedFVars := usedFVars.insert fvar.fvarId!.name
 
         let fvars := (← read).fvars.toList.filter (usedFVars.contains ·.fvarId!.name)
         -- if dbg then
         --   dbg_trace s!"DBG[5]: Trans.lean:116: fvars={fvars}"
         let mut usedLvlParams : Lean.NameSet := default
         for lvlParam in (← read).lvlParams do
-          if checkContains (·.containsLvlParam lvlParam) then
+          if checkContains' doms (·.containsLvlParam lvlParam) then
             usedLvlParams := usedLvlParams.insert lvlParam
 
         let lvlParams := (← read).lvlParams.toList.filter (usedLvlParams.contains ·)
