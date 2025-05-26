@@ -35,10 +35,13 @@ def _root_.Lean.Expr.containsLvlParam (e : Lean.Expr) (n : Name) : Bool :=
     | .sort l          => l.containsLvlParam n
     | _                => false
 
-def fromLevelParam (p : Name) : TransM Level := do
+def fromLevelParam' (p : Name) : TransM (Name × Nat) := do
   let some i := (← read).lvlParams.idxOf? p
     | tthrow s!"unknown universe parameter '{p}' encountered ({(← read).lvlParams})"
   -- dbg_trace s!"{p}: {i}"
+  pure $ (p, i)
+def fromLevelParam (p : Name) : TransM Level := do
+  let (p, i) ← fromLevelParam' p
   pure $ .var p i
 
 def useAuxLvls := true
@@ -50,9 +53,11 @@ partial def fromLevel' (l : Lean.Level) : TransM Level := do
   if useAuxLvls then
     if let some (params, n) := (← get).lvlAuxCache.get? l then
       let lvls ← params.toList.mapM fun param => do
-        fromLevelParam param
+        fromLevelParam' param
       pure $ .aux n lvls
     else
+      if let .zero := l then return .z
+
       let mut usedLvlParams : Lean.NameSet := default
       for lvlParam in (← read).lvlParams do
         if (l.containsLvlParam lvlParam) then
@@ -85,7 +90,7 @@ partial def fromLevel' (l : Lean.Level) : TransM Level := do
       addAuxLvl const.name const
       modify fun s => {s with lvlAuxCache := s.lvlAuxCache.insert l (lvlParams, auxName)}
       let lvls ← lvlParams.mapM fun param => do
-        fromLevelParam param
+        fromLevelParam' param
       pure $ .aux const.name lvls.toList
   else
     match l with

@@ -11,4 +11,9 @@ stdout
 /fixtures/Prelude/
 *.dko
 .depend
+/prev_out/
+/prev_out.dk
+/only_out/
+/tmp*
+/TODO
 /.lake

@@ -6,3 +6,6 @@ def max: Lvl -> Lvl -> Lvl.
 def imax: Lvl -> Lvl -> Lvl.
 def var: nat.Nat -> Lvl -> Lvl.
 def inst: Lvl -> Lvl.
+
+def ivar: nat.Nat -> Lvl -> Lvl.
+[n, l] ivar n l --> inst (var n l).

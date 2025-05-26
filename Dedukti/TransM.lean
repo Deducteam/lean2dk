@@ -171,7 +171,7 @@ def withFVars (fvarTypes : Lean.RBMap Name Expr compare) (fvars : Array Lean.Exp
 def nextAuxName : TransM Name := do fixLeanName 0 $ ((← read).constName).toString false ++ "_let" ++ (toString (← get).numLets) |>.toName
 
 def newAuxLvlName : TransM Name := do
-  let ret ← fixLeanName 0 $ "lvl_aux" ++ (toString (← get).numLvlAux) |>.toName
+  let ret ← fixLeanName 0 $ "l" ++ (toString (← get).numLvlAux) |>.toName
   modify fun s => {s with numLvlAux := s.numLvlAux + 1}
   pure ret
 
