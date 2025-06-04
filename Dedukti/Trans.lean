@@ -51,47 +51,51 @@ partial def fromLevel' (l : Lean.Level) : TransM Level := do
     return ← fromLevelParam p
 
   if useAuxLvls then
-    if let some (params, n) := (← get).lvlAuxCache.get? l then
-      let lvls ← params.toList.mapM fun param => do
-        fromLevelParam' param
-      pure $ .aux n lvls
-    else
-      if let .zero := l then return .z
+    if let .zero := l then return .z
 
-      let mut usedLvlParams : Lean.NameSet := default
-      for lvlParam in (← read).lvlParams do
-        if (l.containsLvlParam lvlParam) then
-          usedLvlParams := usedLvlParams.insert lvlParam
-      let lvlParams := (← read).lvlParams.filter (usedLvlParams.contains ·)
-      let typ : Expr := lvlParams.foldr (init := (.const `lvl.Lvl)) fun n curr => .pi n (.const `lvl.Lvl) curr
-      let valLvl : Level ← withLvlParams 0 lvlParams.toList do
-        match l with
-        | .zero       => pure .z
-        | .succ l     => pure $ .s (← fromLevel' l)
-        | .max l1 l2  => pure $ .max (← fromLevel' l1) (← fromLevel' l2)
-        | .imax l1 l2 => pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
-        | .param p    => fromLevelParam p
-        | .mvar _     => tthrow "unexpected universe metavariable encountered"
-      let val := lvlParams.foldr (init := ← valLvl.toExpr) fun n curr => .lam n curr (.const `lvl.Lvl)
+    let mut usedLvlParamsIdxs : Array (Name × Nat) := default
+    let mut i := 0
+    for lvlParam in (← read).lvlParams do
+      if (l.containsLvlParam lvlParam) then
+        usedLvlParamsIdxs := usedLvlParamsIdxs.push (lvlParam, i)
+      i := i + 1
 
-      -- if l == .imax (.param `u) .zero then
-      --   let e := (Lean.Expr.sort l)
-      --   dbg_trace s!"DBG[27]: Trans.lean:48 {lvlParams}, {e.containsLvlParam `v}, {e}, {e.instantiateLevelParams [`v] [.zero]}"
+    let usedLvlParams : Array Name := usedLvlParamsIdxs.map (·.1)
 
-      let auxName ← newAuxLvlName
+    let auxName ←
+      if let some n := (← get).lvlAuxCache.get? (l, usedLvlParamsIdxs) then
+        pure n
+      else
+        let lvlParams := (← read).lvlParams.filter (usedLvlParams.contains ·)
+        let typ : Expr := lvlParams.foldr (init := (.const `lvl.Lvl)) fun n curr => .pi n (.const `lvl.Lvl) curr
+        let valLvl : Level ← do
+          match l with
+          | .zero       => pure .z
+          | .succ l     => pure $ .s (← fromLevel' l)
+          | .max l1 l2  => pure $ .max (← fromLevel' l1) (← fromLevel' l2)
+          | .imax l1 l2 => pure $ .imax (← fromLevel' l1) (← fromLevel' l2)
+          | .param p    => fromLevelParam p
+          | .mvar _     => tthrow "unexpected universe metavariable encountered"
+        let val := lvlParams.foldr (init := ← valLvl.toExpr) fun n curr => .lam n curr (.const `lvl.Lvl)
 
-      let lhs := .const auxName
-      -- if dbg then
-      --   dbg_trace s!"DBG[6]: Trans.lean:131: lhs={repr val}"
+        -- if l == .imax (.param `u) .zero then
+        --   let e := (Lean.Expr.sort l)
+        --   dbg_trace s!"DBG[27]: Trans.lean:48 {lvlParams}, {e.containsLvlParam `v}, {e}, {e.instantiateLevelParams [`v] [.zero]}"
 
-      -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
+        let auxName ← newAuxLvlName
 
-      let const := Const.definable auxName typ [.mk [] lhs val]
-      addAuxLvl const.name const
-      modify fun s => {s with lvlAuxCache := s.lvlAuxCache.insert l (lvlParams, auxName)}
-      let lvls ← lvlParams.mapM fun param => do
-        fromLevelParam' param
-      pure $ .aux const.name lvls.toList
+        let lhs := .const auxName
+        -- if dbg then
+        --   dbg_trace s!"DBG[6]: Trans.lean:131: lhs={repr val}"
+
+        -- dbg_trace s!"{name} ({letName}): {typ.dbgToString}"
+
+        let const := Const.definable auxName typ [.mk [] lhs val]
+        addAuxLvl const.name const
+        modify fun s => {s with lvlAuxCache := s.lvlAuxCache.insert (l, usedLvlParamsIdxs) (auxName)}
+
+        pure auxName
+      pure $ .aux auxName usedLvlParams
   else
     match l with
     | .zero       => pure .z

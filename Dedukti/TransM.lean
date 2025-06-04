@@ -27,7 +27,7 @@ structure State where
   names            : Std.HashMap Name Name := default
   constsToModNames : Std.HashMap Name Name := default
   cache       : Std.HashMap (Array Name × Bool × Lean.Expr) Expr := default
-  lvlAuxCache : Std.HashMap Lean.Level (Array Name × Name) := default
+  lvlAuxCache : Std.HashMap (Lean.Level × Array (Name × Nat)) Name := default
   numLvlAux   : Nat := 0
   /-- Counter for lets encountered in a constant,
   to allow for uniquely naming auxilliary let definitions. -/
