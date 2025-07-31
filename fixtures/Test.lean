@@ -140,8 +140,8 @@ inductive List (α : Type u) where
 
 -- --
 
-def one : Nat := Nat.succ (Nat.zero)
-def two : Nat := Nat.succ (Nat.succ (Nat.zero))
+noncomputable def one : Nat := Nat.succ (Nat.zero)
+noncomputable def two : Nat := Nat.succ (Nat.succ (Nat.zero))
 
 inductive Tree (α : Type u) where
   | mk : α → List (Tree α) → Tree α

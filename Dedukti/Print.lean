@@ -26,7 +26,7 @@ deriving instance Repr for Lean.ConstantInfo
 
 namespace Dedukti
 
-def preludeConstNames : Lean.HashSet Name := -- TODO rename things to avoid naming conflicts with stdlib
+def preludeConstNames : Std.HashSet Name := -- TODO rename things to avoid naming conflicts with stdlib
 [
   `lvl.Lvl,
   `lvl.z,

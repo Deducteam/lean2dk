@@ -39,7 +39,7 @@ open Lean in
 partial def getLeafModules (imports : Array Import) : ForEachModuleM $ Array (Name × ModuleData) := do
   let mut leafs := #[]
   for i in imports do
-    if i.runtimeOnly || (← get).moduleNameSet.contains i.module then
+    if /- i.runtimeOnly || -/ (← get).moduleNameSet.contains i.module then
       continue
     let mFile ← findOLean i.module
     unless (← mFile.pathExists) do

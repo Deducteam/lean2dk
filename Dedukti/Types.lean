@@ -53,4 +53,6 @@ structure Env where
   auxLvlMap : Lean.RBMap Name Const compare
   deriving Inhabited
 
+#check Env.constModMap
+
 end Dedukti

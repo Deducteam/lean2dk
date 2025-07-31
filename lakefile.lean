@@ -13,14 +13,14 @@ lean_lib Dedukti { roots := #[`Dedukti] }
 @[default_target]
 lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
 
--- require lean4less from git "https://github.com/rish987/lean4less"
-require lean4less from "/home/rvaishna/projects/lean4less/"
+require lean4less from git "https://github.com/rish987/lean4less"
+-- require lean4less from "/home/rvaishna/projects/lean4less/"
 
 -- require mathlib from git
 --   "https://github.com/leanprover-community/mathlib4" @ "v4.18.0-rc1"
 
 require Cli from git
-  "https://github.com/leanprover/lean4-cli" @ "v4.18.0-rc1"
+  "https://github.com/leanprover/lean4-cli" @ "v4.22.0-rc4"
 
 inductive L' where
 | im (a b : L') : L'
@@ -31,10 +31,10 @@ inductive L' where
 | inst : L' -> L'
 #check L'.rec
 
-require lean4lean from "/home/rvaishna/projects/lean4lean/"
+-- require lean4lean from "/home/rvaishna/projects/lean4lean/"
 
--- require lean4lean from git
---   "https://github.com/rish987/Lean4Lean" @ "lean4less"
+require lean4lean from git
+  "https://github.com/rish987/Lean4Lean" @ "lean4less"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "
