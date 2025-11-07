@@ -38,12 +38,12 @@ maxS (sublvl.s (sublvl.cons u q)).
   (maxS (sublvl.maxadd l1 u)) 
   (maxS l2).
 
-def rulehelper: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
-[u] rulehelper u (maxS sublvl.nil) -->
+def imaxaux: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
+[u] imaxaux u (maxS sublvl.nil) -->
   maxS sublvl.nil.
-[u, v, q] rulehelper u (maxS (sublvl.cons v q)) -->
-  lvl.max (srule u v) (rulehelper u (maxS q)).
+[u, v, q] imaxaux u (maxS (sublvl.cons v q)) -->
+  lvl.max (srule u v) (imaxaux u (maxS q)).
 
 [t] lvl.imax (maxS sublvl.nil) t --> t.
 [u, q, t] lvl.imax (maxS (sublvl.cons u q)) t --> 
-  lvl.max (rulehelper u t) (lvl.imax (maxS q) t).
+  lvl.max (imaxaux u t) (lvl.imax (maxS q) t).
