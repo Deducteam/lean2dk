@@ -4,7 +4,7 @@
 def test1  := z:lvl.Lvl => (x:lvl.Lvl => lvl.var nat.z x) (lvl.inst (lvl.var (nat.s nat.z) z)).
 def test1' := z:lvl.Lvl =>
     (normalize.maxS
-      (sublvl.cons (sublvl.a (nat.cons (nat.s nat.z) nat.nil) (nat.s nat.z) nat.z) sublvl.nil)).
+      (sublvl.cons (sublvl.V (nat.cons (nat.s nat.z) nat.nil) (nat.s nat.z) nat.z) sublvl.nil)).
 #PRINT "test1 == test1'?".
 #ASSERT test1 == test1'.
 #CHECK test1 == test1'.
@@ -21,8 +21,8 @@ def test3  := z:lvl.Lvl => (x:lvl.Lvl => lvl.var (nat.z) x) (lvl.inst (lvl.max (
 def test3' := z:lvl.Lvl =>
     (normalize.maxS
        (sublvl.cons
-          (sublvl.a (nat.cons (nat.s nat.z) nat.nil) (nat.s nat.z) nat.z)
-          (sublvl.cons (sublvl.b nat.nil (nat.s nat.z)) sublvl.nil))).
+          (sublvl.V (nat.cons (nat.s nat.z) nat.nil) (nat.s nat.z) nat.z)
+          (sublvl.cons (sublvl.C nat.nil (nat.s nat.z)) sublvl.nil))).
 #PRINT "test3 == test3'?".
 #ASSERT test3 == test3'.
 #CHECK test3 == test3'.
@@ -33,20 +33,20 @@ def two := nat.s one
 def three := nat.s two
 def four := nat.s three
 
-def test4  := a:lvl.Lvl => b:lvl.Lvl => c:lvl.Lvl => d:lvl.Lvl =>
-  (x:lvl.Lvl => y:lvl.Lvl => sublvl.cons (sublvl.b (lvl.cons x (lvl.cons y lvl.nil)) (nat.s nat.z)) sublvl.nil) 
-    (normalize.maxS (sublvl.cons (sublvl.b (lvl.cons a lvl.nil) (nat.s nat.z)) (sublvl.cons (sublvl.b (lvl.cons b lvl.nil) (nat.s nat.z)) sublvl.nil)))
-    (normalize.maxS (sublvl.cons (sublvl.b (lvl.cons c lvl.nil) (nat.s nat.z)) (sublvl.cons (sublvl.b (lvl.cons d lvl.nil) (nat.s nat.z)) sublvl.nil)))
+def test4  := V:lvl.Lvl => C:lvl.Lvl => c:lvl.Lvl => d:lvl.Lvl =>
+  (x:lvl.Lvl => y:lvl.Lvl => sublvl.cons (sublvl.C (lvl.cons x (lvl.cons y lvl.nil)) (nat.s nat.z)) sublvl.nil) 
+    (normalize.maxS (sublvl.cons (sublvl.C (lvl.cons V lvl.nil) (nat.s nat.z)) (sublvl.cons (sublvl.C (lvl.cons C lvl.nil) (nat.s nat.z)) sublvl.nil)))
+    (normalize.maxS (sublvl.cons (sublvl.C (lvl.cons c lvl.nil) (nat.s nat.z)) (sublvl.cons (sublvl.C (lvl.cons d lvl.nil) (nat.s nat.z)) sublvl.nil)))
     .
-def test4' := a:lvl.Lvl => b:lvl.Lvl => c:lvl.Lvl => d:lvl.Lvl =>
+def test4' := V:lvl.Lvl => C:lvl.Lvl => c:lvl.Lvl => d:lvl.Lvl =>
   (sublvl.cons
-    (sublvl.b (lvl.cons a (lvl.cons c lvl.nil)) (nat.s nat.z))
+    (sublvl.C (lvl.cons V (lvl.cons c lvl.nil)) (nat.s nat.z))
   (sublvl.cons
-    (sublvl.b (lvl.cons a (lvl.cons d lvl.nil)) (nat.s nat.z))
+    (sublvl.C (lvl.cons V (lvl.cons d lvl.nil)) (nat.s nat.z))
   (sublvl.cons
-    (sublvl.b (lvl.cons b (lvl.cons c lvl.nil)) (nat.s nat.z))
+    (sublvl.C (lvl.cons C (lvl.cons c lvl.nil)) (nat.s nat.z))
   (sublvl.cons
-    (sublvl.b (lvl.cons b (lvl.cons d lvl.nil)) (nat.s nat.z))
+    (sublvl.C (lvl.cons C (lvl.cons d lvl.nil)) (nat.s nat.z))
     sublvl.nil)))).
 #PRINT "test4 == test4'?".
 #ASSERT test4 == test4'.
