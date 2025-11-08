@@ -58,9 +58,3 @@ def maxadd: Set -> SubLvl -> Set.
     (add l v) 
     (add (maxadd l v) u)
   ).
-
-def s: Set -> Set.
-[] s nil --> nil.
-(; FIXME use maxadd instead of cons on the RHS??? ;)
-[l1, n, q] s (cons (C l1 n) q) --> cons (C l1 (nat.s n)) (s q).
-[l1, x, n, q] s (cons (V l1 x n) q) --> cons (V l1 x (nat.s n)) (maxadd (s q) (C nat.nil (nat.s nat.z))).

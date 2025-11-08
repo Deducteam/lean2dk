@@ -1,49 +1,59 @@
 def maxS: sublvl.Set -> lvl.Lvl.
 
-[l] lvl.var _ (lvl.inst l) --> l
-[l] lvl.var l _ --> maxS (sublvl.cons (sublvl.V (nat.cons l nat.nil) l nat.z) sublvl.nil).
+def imax_aux: sublvl.SubLvl -> sublvl.SubLvl -> lvl.Lvl.
 
-def srule: sublvl.SubLvl -> sublvl.SubLvl -> lvl.Lvl.
-
-[l1, l2, n, m, x] srule (sublvl.V l1 x n) (sublvl.C l2 m) -->
-lvl.max
-  (maxS (sublvl.cons (sublvl.V (nat.merge l1 l2) x n) sublvl.nil))
-  (maxS (sublvl.cons (sublvl.C l2 m) sublvl.nil)).
-
-[l1, l2, n, m] srule (sublvl.C l1 n) (sublvl.C l2 m) -->
+[l1, l2, n, m] imax_aux (sublvl.C l1 n) (sublvl.C l2 m) -->
 lvl.max
   (maxS (sublvl.cons (sublvl.C (nat.merge l1 l2) n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.C l2 m) sublvl.nil)).
 
-[l1, l2, n, m, x] srule (sublvl.C l1 n) (sublvl.V l2 x m) -->
+[l1, l2, n, m, x] imax_aux (sublvl.C l1 n) (sublvl.V l2 x m) -->
 lvl.max
   (maxS (sublvl.cons (sublvl.C (nat.merge l1 l2) n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.V l2 x m) sublvl.nil)).
 
-[l1, l2, n, m, x, y] srule (sublvl.V l1 x n) (sublvl.V l2 y m) -->
+[l1, l2, n, m, x, y] imax_aux (sublvl.V l1 x n) (sublvl.V l2 y m) -->
 lvl.max
   (maxS (sublvl.cons (sublvl.V (nat.merge l1 l2) x n) sublvl.nil))
   (maxS (sublvl.cons (sublvl.V l2 y m) sublvl.nil)).
 
+[l1, l2, n, m, x] imax_aux (sublvl.V l1 x n) (sublvl.C l2 m) -->
+lvl.max
+  (maxS (sublvl.cons (sublvl.V (nat.merge l1 l2) x n) sublvl.nil))
+  (maxS (sublvl.cons (sublvl.C l2 m) sublvl.nil)).
+
+def imax_auxL: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
+[u] imax_auxL u (maxS sublvl.nil) -->
+  maxS sublvl.nil.
+[u, v, q] imax_auxL u (maxS (sublvl.cons v q)) -->
+  lvl.max (imax_aux u v) (imax_auxL u (maxS q)).
+
+[t] lvl.imax (maxS sublvl.nil) t --> t.
+[u, q, t] lvl.imax (maxS (sublvl.cons u q)) t --> 
+  lvl.max (imax_auxL u t) (lvl.imax (maxS q) t).
+
+def s_aux: sublvl.Set -> lvl.Lvl.
+[] s_aux sublvl.nil -->
+  maxS (sublvl.cons (sublvl.C nat.nil (nat.s nat.z)) sublvl.nil).
+[l1, n, q] s_aux (sublvl.cons (sublvl.C l1 n) q) -->
+  lvl.max
+    (maxS (sublvl.cons (sublvl.C l1 (nat.s n)) sublvl.nil))
+    (s_aux q).
+[l1, x, n, q] s_aux (sublvl.cons (sublvl.V l1 x n) q) -->
+  lvl.max 
+    (maxS (sublvl.cons (sublvl.V l1 x (nat.s n)) sublvl.nil))
+    (s_aux q).
+
+[l] lvl.s (maxS l) -->
+  s_aux l.
+
 [] lvl.z --> maxS sublvl.nil.
 
-[] lvl.s (maxS sublvl.nil) -->
-maxS (sublvl.cons (sublvl.C nat.nil (nat.s nat.z)) sublvl.nil).
-[u, q] lvl.s (maxS (sublvl.cons u q)) -->
-maxS (sublvl.s (sublvl.cons u q)).
+[l] lvl.var _ (lvl.inst l) --> l
+[l] lvl.var l _ --> maxS (sublvl.cons (sublvl.V (nat.cons l nat.nil) l nat.z) sublvl.nil).
 
 [l] lvl.max (maxS l) (maxS sublvl.nil) --> maxS l.
 [u, l1, l2] lvl.max (maxS l1) (maxS (sublvl.cons u l2)) --> 
   lvl.max 
-  (maxS (sublvl.maxadd l1 u)) 
-  (maxS l2).
-
-def imaxaux: sublvl.SubLvl -> lvl.Lvl -> lvl.Lvl.
-[u] imaxaux u (maxS sublvl.nil) -->
-  maxS sublvl.nil.
-[u, v, q] imaxaux u (maxS (sublvl.cons v q)) -->
-  lvl.max (srule u v) (imaxaux u (maxS q)).
-
-[t] lvl.imax (maxS sublvl.nil) t --> t.
-[u, q, t] lvl.imax (maxS (sublvl.cons u q)) t --> 
-  lvl.max (imaxaux u t) (lvl.imax (maxS q) t).
+    (maxS (sublvl.maxadd l1 u)) 
+    (maxS l2).
