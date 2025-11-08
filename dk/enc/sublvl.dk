@@ -34,6 +34,9 @@ Set: Type.
 nil: Set.
 cons: SubLvl -> Set -> Set.
 
+def single: SubLvl -> Set.
+[s] single s --> cons s nil.
+
 def iteset: bool.Bool -> Set -> Set -> Set.
 [n] iteset bool.true n _ --> n.
 [n] iteset bool.false _ n --> n.
