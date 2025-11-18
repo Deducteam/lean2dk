@@ -7,6 +7,17 @@ import Lean4Less.Commands
 import Lean4Lean.Commands
 import Dedukti.Util
 
+axiom T : Nat → Type
+
+structure Point where
+  x : Nat
+  y : T x
+
+#check Point.y
+
+@[reducible] def Point.z : Point → Nat :=
+   fun self => self.1
+
 open Dedukti
 
 abbrev RED        := "\x1b[31m"

@@ -143,6 +143,24 @@ def natLitToConstructor : Nat → Lean.Expr
   | 0 => natZero
   | n+1 => .app natSucc (natLitToConstructor n)
 
+#check Quot
+-- Quot.{u} {α : Sort u} (r : α → α → Prop) : Sort u
+
+#check Quot.ind
+-- Quot.ind.{u} : ∀ {A : Sort u} {r : A → A → Prop} {B : Quot r → Prop},
+--   (∀ (a : A), B (Quot.mk r a)) → ∀ (q : Quot r), B q
+
+#check Quot.lift
+-- Quot.lift.{u, v} : {A : Sort u} → {r : A → A → Prop} → {B : Sort v} →
+--   (f : A → B) → (∀ (a b : A), r a b → f a = f b) → Quot r → B
+
+#check Quot.mk
+-- Quot.mk.{u} {α : Sort u} (r : α → α → Prop) (a : α) : Quot r
+
+#check Quot.sound
+-- Quot.sound.{u} : ∀ {α : Sort u} {r : α → α → Prop} {a b : α}, r a b →
+--   Quot.mk r a = Quot.mk r b
+
 mutual
   partial def mkProjFn (induct : Name) (us : List Lean.Level) (params : Array Lean.Expr) (i : Nat) (major : Lean.Expr) : TransM Expr := do
     match ← getStructureInfo? (← read).env induct with

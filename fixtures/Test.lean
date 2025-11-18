@@ -1,12 +1,14 @@
 prelude
 set_option linter.all false -- prevent runFrontend error messages
 
+def poly.{u} : Sort (u + 1) := Sort u
+
 universe u v w
 
 inductive True : Prop where
   | intro : True
 
-def test : True → True := λ x : True => x
+def test := λ x : True => x
 
 def id {T : Sort u} : T → T := λ x : T => x
 
