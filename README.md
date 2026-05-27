@@ -1,6 +1,6 @@
 # lean2dk
 
-lean4dk is a tool for translating Lean to Dedukti. The implementation is still a work-in-progress.
+lean2dk is a tool for translating Lean to Dedukti. The implementation is still a work-in-progress.
 
 ## Building
 
