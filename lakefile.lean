@@ -13,7 +13,7 @@ lean_lib Dedukti { roots := #[`Dedukti] }
 @[default_target]
 lean_lib fixtures { globs := #[Glob.submodules `fixtures] }
 
-require lean4less from git "https://github.com/rish987/lean4less" @ "stable"
+require lean4less from git "https://github.com/rish987/lean4less" @ "claude-stable"
 -- require lean4less from "/home/rish/lean4less/"
 
 -- require mathlib from git
@@ -34,7 +34,7 @@ inductive L' where
 -- require lean4lean from "/home/rish/lean4lean/"
 
 require lean4lean from git
-  "https://github.com/rish987/Lean4Lean" @ "stable"
+  "https://github.com/rish987/Lean4Lean" @ "claude-stable"
 
 def runCmd' (cmd : String) : ScriptM $ IO.Process.Output := do
   let cmd := cmd.splitOn " "

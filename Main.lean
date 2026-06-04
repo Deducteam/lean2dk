@@ -163,14 +163,19 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     for (pn, pi) in  ← getProjFns onlyConstsDeps env do
       onlyConstsDeps := onlyConstsDeps.insert pn pi
     
+    -- Constants whose kernel check aborted on an infeasible primitive `Nat` op
+    -- (see `Lean4Less.natPrimOpStubThreshold`); these are stubbed in the translation.
+    let mut stubConsts : Lean.NameSet := default
     let env ← do
       if elim then
         let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
 
-        let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := patchConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
+        let (kenv, _, stubbed) ← Lean4Lean.replay addDecl {newConstants := patchConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
         let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
-        let (kenv, _) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} kenv (printProgress := true) (op := "patch")
+        -- threading `stubbed` so the second replay's result accumulates stubs from the first
+        let (kenv, _, stubbed) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} kenv (printProgress := true) (op := "patch") (stubbed := stubbed)
         let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
+        stubConsts := stubbed
         onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
         for (pn, pi) in  ← getProjFns onlyConstsDeps env do
           onlyConstsDeps := onlyConstsDeps.insert pn pi
@@ -178,6 +183,8 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         pure env
       else
         pure env
+    if stubConsts.size > 0 then
+      printColor YELLOW s!">> Stubbing {stubConsts.size} constant(s) that require infeasible primitive Nat computation: {stubConsts.toList}"
 
     let constsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const |>.union $ patchConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
     -- let (onlyConsts, env) ← Lean4Lean.replay env onlyConstsDeps (Lean4Less.addDecl (opts := {proofIrrelevance := true, kLikeReduction := true})) (printErr := true) (overrides := default) (printProgress := true) (initConsts := Lean4Less.patchConsts)
@@ -190,7 +197,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     printColor BLUE s!">> Translating {onlyConstsDeps.size} constants..."
 
     -- translate elaborated Lean environment to Dedukti
-    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames, orderedModules := ← getOrderedModules env |>.run}
+    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames, stubConsts, orderedModules := ← getOrderedModules env |>.run}
 
     -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 

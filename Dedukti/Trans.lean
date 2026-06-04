@@ -320,6 +320,11 @@ mutual
     let nameOrig := (← read).constNameOrig
     let type ← fromExprAsType cnst.type
     let type := (← read).lvlParams.foldr (init := type) fun n curr => .pi n (.const `lvl.Lvl) curr
+    -- Constants whose kernel check required an infeasible primitive `Nat` op (e.g. anything
+    -- reducing `UInt32.size = 2^32`) are stubbed: we emit only their type, dropping the rewrite
+    -- rule/value that Dedukti could not check without primitive `Nat` arithmetic.
+    if (← read).stubConsts.contains nameOrig then
+      return .static name type
     match cnst with
     | .axiomInfo    (_ : Lean.AxiomVal) => pure $ .static name type
     | .defnInfo     (val : Lean.DefinitionVal)

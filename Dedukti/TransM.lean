@@ -17,6 +17,9 @@ structure Context where
   orderedModules : Array Name
   consts : Lean.NameSet
   patchConsts : Lean.NameSet
+  /-- Constants whose kernel check required an infeasible primitive `Nat` op (see
+      `Lean4Less.natPrimOpStubThreshold`); emitted as bare declarations (no rewrite rule). -/
+  stubConsts : Lean.NameSet := default
   fvars     : Array Lean.Expr := default
   fvarTypes : Lean.RBMap Name Expr compare := default
   lvars     : Lean.RBMap Name (Array Lean.Expr × Array Name × Name) compare := default
