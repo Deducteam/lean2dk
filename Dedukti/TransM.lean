@@ -17,9 +17,12 @@ structure Context where
   orderedModules : Array Name
   consts : Lean.NameSet
   patchConsts : Lean.NameSet
-  /-- Constants whose kernel check required an infeasible primitive `Nat` op (see
-      `Lean4Less.natPrimOpStubThreshold`); emitted as bare declarations (no rewrite rule). -/
-  stubConsts : Lean.NameSet := default
+  /-- Constants stubbed because their *value/body* needs an infeasible primitive `Nat` op, or
+      whose body references a type-stubbed constant; emitted with their real type, no rule. -/
+  valueStubConsts : Lean.NameSet := default
+  /-- Constants stubbed because their *type* needs an infeasible primitive `Nat` op, or whose
+      type references a type-stubbed constant; emitted with an opaque type (`name : Type.`). -/
+  typeStubConsts : Lean.NameSet := default
   fvars     : Array Lean.Expr := default
   fvarTypes : Lean.RBMap Name Expr compare := default
   lvars     : Lean.RBMap Name (Array Lean.Expr × Array Name × Name) compare := default

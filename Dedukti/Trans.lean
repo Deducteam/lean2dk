@@ -318,12 +318,16 @@ mutual
   withNewConstant cnst.name $ withResetCtx $ withLvlParams 2 cnst.levelParams do
     let name := (← read).constName
     let nameOrig := (← read).constNameOrig
+    -- Stubbing for constants requiring infeasible primitive `Nat` ops (see
+    -- `Lean4Less.natPrimOpStubThreshold`) and their cascade:
+    --  * type-stub: the declared type is itself unusable in Dedukti, so emit an opaque
+    --    `name : Type.` (no body). Nothing un-stubbed references it (the cascade guarantees this).
+    --  * value-stub: the type is fine; emit it with the real type but drop the rule/value.
+    if (← read).typeStubConsts.contains nameOrig then
+      return .static name .type
     let type ← fromExprAsType cnst.type
     let type := (← read).lvlParams.foldr (init := type) fun n curr => .pi n (.const `lvl.Lvl) curr
-    -- Constants whose kernel check required an infeasible primitive `Nat` op (e.g. anything
-    -- reducing `UInt32.size = 2^32`) are stubbed: we emit only their type, dropping the rewrite
-    -- rule/value that Dedukti could not check without primitive `Nat` arithmetic.
-    if (← read).stubConsts.contains nameOrig then
+    if (← read).valueStubConsts.contains nameOrig then
       return .static name type
     match cnst with
     | .axiomInfo    (_ : Lean.AxiomVal) => pure $ .static name type

@@ -163,19 +163,22 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     for (pn, pi) in  ← getProjFns onlyConstsDeps env do
       onlyConstsDeps := onlyConstsDeps.insert pn pi
     
-    -- Constants whose kernel check aborted on an infeasible primitive `Nat` op
-    -- (see `Lean4Less.natPrimOpStubThreshold`); these are stubbed in the translation.
-    let mut stubConsts : Lean.NameSet := default
+    -- Base sets of constants whose kernel check hit an infeasible primitive `Nat` op
+    -- (see `Lean4Less.natPrimOpStubThreshold`): `valueStubBase` if the op was in the body/value
+    -- (type is fine), `typeStubBase` if it was in the type (the type itself is unusable).
+    let mut valueStubBase : Lean.NameSet := default
+    let mut typeStubBase : Lean.NameSet := default
     let env ← do
       if elim then
         let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
 
-        let (kenv, _, stubbed) ← Lean4Lean.replay addDecl {newConstants := patchConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
+        let (kenv, _, vs, ts) ← Lean4Lean.replay addDecl {newConstants := patchConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
         let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
-        -- threading `stubbed` so the second replay's result accumulates stubs from the first
-        let (kenv, _, stubbed) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} kenv (printProgress := true) (op := "patch") (stubbed := stubbed)
+        -- threading the stub sets so the second replay accumulates stubs from the first
+        let (kenv, _, vs, ts) ← Lean4Lean.replay addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} kenv (printProgress := true) (op := "patch") (valueStubbed := vs) (typeStubbed := ts)
         let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
-        stubConsts := stubbed
+        valueStubBase := vs
+        typeStubBase := ts
         onlyConstsDeps ← Lean4Lean.getDepConstsEnv env onlyConstsInit overrides
         for (pn, pi) in  ← getProjFns onlyConstsDeps env do
           onlyConstsDeps := onlyConstsDeps.insert pn pi
@@ -183,10 +186,32 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         pure env
       else
         pure env
-    if stubConsts.size > 0 then
-      printColor YELLOW s!">> Stubbing {stubConsts.size} constant(s) that require infeasible primitive Nat computation: {stubConsts.toList}"
 
     let constsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const |>.union $ patchConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
+
+    -- Cascade the stubbing over the dependency DAG (in Lean-name space):
+    --  * a constant whose *type* references a type-stubbed constant must itself be type-stubbed;
+    --  * a constant whose *value* references a type-stubbed constant must be value-stubbed.
+    -- (Value-stubs keep their real type and do not propagate; only type-stubs taint users.)
+    let usedIn (e? : Option Lean.Expr) : Lean.NameSet :=
+      match e? with
+      | some e => e.getUsedConstants.foldl (·.insert ·) default
+      | none => default
+    let mut typeStub := typeStubBase
+    let mut valueStub := valueStubBase
+    let mut changed := true
+    while changed do
+      changed := false
+      for c in constsNames do
+        let some ci := env.find? c | continue
+        if !typeStub.contains c && (usedIn (some ci.type)).any (typeStub.contains ·) then
+          typeStub := typeStub.insert c; changed := true
+        else if !typeStub.contains c && !valueStub.contains c && (usedIn ci.value?).any (typeStub.contains ·) then
+          valueStub := valueStub.insert c; changed := true
+    -- type-stubbed constants are not value-stubbed (type-stub subsumes)
+    valueStub := valueStub.fold (fun acc c => if typeStub.contains c then acc else acc.insert c) default
+    if valueStub.size > 0 || typeStub.size > 0 then
+      printColor YELLOW s!">> Stubbing {valueStub.size} value + {typeStub.size} type constant(s) requiring infeasible primitive Nat computation"
     -- let (onlyConsts, env) ← Lean4Lean.replay env onlyConstsDeps (Lean4Less.addDecl (opts := {proofIrrelevance := true, kLikeReduction := true})) (printErr := true) (overrides := default) (printProgress := true) (initConsts := Lean4Less.patchConsts)
 
     -- let ignoredConsts := onlyConstsInit.diff onlyConsts
@@ -197,7 +222,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     printColor BLUE s!">> Translating {onlyConstsDeps.size} constants..."
 
     -- translate elaborated Lean environment to Dedukti
-    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames, stubConsts, orderedModules := ← getOrderedModules env |>.run}
+    let (_, {env := dkEnv, names := nameMap, ..}) ← (Trans.translateEnv (transDeps := write)).toIO { options := default, fileName := "", fileMap := default } {env} {env, patchConsts, consts := constsNames, valueStubConsts := valueStub, typeStubConsts := typeStub, orderedModules := ← getOrderedModules env |>.run}
 
     -- let write := if let some _ := onlyConsts? then (p.hasFlag "write") else true -- REPORT why does this not work?
 
@@ -225,6 +250,17 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       printMod auxLvlModName dkEnv.auxLvlMap
       for (mod, constMap) in dkEnv.constModMap do
         printMod mod constMap
+
+      -- Record the stubbed constants (could not be faithfully checked in Dedukti because they
+      -- require primitive Nat computation) for the user to review.
+      if valueStub.size > 0 || typeStub.size > 0 then
+        let mut report := "-- Constants stubbed by lean2dk: their kernel check requires primitive Nat\n-- computation (Lean4Less.natPrimOpStubThreshold) that Dedukti cannot perform.\n"
+        report := report ++ s!"\n-- type-stubbed ({typeStub.size}): declared with an opaque type (`name : Type.`), no body\n"
+        for c in typeStub do report := report ++ s!"{c}\n"
+        report := report ++ s!"\n-- value-stubbed ({valueStub.size}): real type kept, rewrite rule/value dropped\n"
+        for c in valueStub do report := report ++ s!"{c}\n"
+        IO.FS.writeFile (outDir.join "STUBBED.txt") report
+        printColor YELLOW s!">> Wrote stubbed-constant report to dk/out/STUBBED.txt"
 
     -- if p.hasFlag "print" then
     --   printDkEnv dkEnv $ .some (onlyConstsArr.foldl (init := default) fun acc c => acc.insert c)
