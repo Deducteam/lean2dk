@@ -392,27 +392,30 @@ mutual
 
           let outType ← inferType bod
           -- -- sanity check
-          -- if outType.getAppFn != motiveArg then tthrow s!"output type is not motive application" 
+          -- if outType.getAppFn != motiveArg then tthrow s!"output type is not motive application"
           let outArgs := outType.getAppArgs
           let idxArgsOrig := if outArgs.size > 1 then outArgs[:outArgs.size - 1].toArray else #[]
           let ctorAppOrig := outArgs[outArgs.size - 1]!
-          -- let idxVars := idxArgsOrig.foldl (init := #[]) fun acc arg =>
-          --   if arg.isFVar then acc ++ #[arg] else acc
 
-          -- let numCtorLvls := ctor.levelParams.length
-          -- let ctorLvlOffset := cnst.levelParams.length - ctor.levelParams.length-- if large-eliminating, first param is output sort
+          withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- fresh param vars to keep the recursor's param positions left-linear
+            -- Use the *actual* index terms (functions of the constructor's params/fields) in the
+            -- LHS index positions, rather than fresh index variables. Fresh index variables force
+            -- Dedukti to infer equalities (e.g. iₖ = Nat.succ f), which can defeat its rule-context
+            -- inference, yielding ERROR 207 "Feature not implemented" (Subst.UnshiftExn) -- e.g. for
+            -- `Nat.le.below.rec`. The actual index terms make the LHS non-left-linear (a field may
+            -- recur in both an index and the major premise), which `dk check` supports via
+            -- convertibility checks. Params are renamed to the fresh `newParamVars` so they match
+            -- the (param-substituted) major premise.
+            let replaceParams (e : Lean.Expr) : Lean.Expr := e.replaceFVars domVars[:val.numParams] newParamVars
+            let ctorAppLean := replaceParams ctorAppOrig
+            let idxArgsLean := idxArgsOrig.map replaceParams
+            let lhsLean := Lean.mkAppN (.const nameOrig lvls.toList) $ domVars[:domVars.size - r.nfields] ++ idxArgsLean ++ #[ctorAppLean]
+            -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
 
-          withLocalDecls (← dupParams idxArgsOrig) λ newIdxVars => do -- use fresh parameter/index variables to avoid non-left-linearity
-            withLocalDecls (← dupParams domVars[:val.numParams]) λ newParamVars => do -- FIXME better way than double-nesting?
-              -- let idxArgsLean ← idxArgsOrig.mapM fun arg => reduce $ arg.replaceFVars idxVars newIdxVars -- reconstruct index arguments; must reduce because they appear on the LHS of the rewrite rule
-              let ctorAppLean := ctorAppOrig.replaceFVars domVars[:val.numParams] newParamVars
-              let lhsLean := Lean.mkAppN (.const nameOrig lvls.toList) $ domVars[:domVars.size - r.nfields] ++ newIdxVars ++ #[ctorAppLean]
-              -- dbg_trace s!"{(← read).lvlParams.size}, {(← read).fvars.size}, {lhsLean}"
+            let (lhs, rhs) ← withTypedFVars (domVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr 20 lhsLean, ← fromExpr 21 bod)
 
-              let (lhs, rhs) ← withTypedFVars (domVars ++ newIdxVars ++ newParamVars) $ withNoLVarNormalize $ do pure (← fromExpr 20 lhsLean, ← fromExpr 21 bod)
-
-              let vars := cnst.levelParams.toArray ++ domVars.map (·.fvarId!.name) ++ newParamVars.map (·.fvarId!.name) ++ newIdxVars.map (·.fvarId!.name)
-              pure $ .mk vars.toList lhs rhs :: acc
+            let vars := cnst.levelParams.toArray ++ domVars.map (·.fvarId!.name) ++ newParamVars.map (·.fvarId!.name)
+            pure $ .mk vars.toList lhs rhs :: acc
 
       pure $ .definable name type rules
 
