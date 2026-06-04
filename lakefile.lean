@@ -85,18 +85,39 @@ def argsString (args : List String) :=
 def eprintColor (color s : String) := IO.eprintln s!"{color}{s}{NOCOLOR}"
 def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
 
+/--
+  On macOS, the Lean v4.18 toolchain links the `lean2dk` binary without setting
+  the `SG_READ_ONLY` flag on its `__DATA_CONST` segment, which newer dyld
+  (Darwin 25.x+) requires -- otherwise the binary aborts at launch with
+  "__DATA_CONST segment missing SG_READ_ONLY flag". `scripts/patch_macho.py`
+  patches the flag (and re-signs) post-link. It is a no-op on other platforms,
+  so we only invoke it on macOS. See README for details.
+-/
+def patchCmds : List String :=
+  if System.Platform.isOSX then ["python3 scripts/patch_macho.py .lake/build/bin/lean2dk"] else []
+
+/-- Build the `lean2dk` binary, then patch it on macOS so it can launch (see `patchCmds`). -/
+def buildLean2dkCmds : List String := ["lake build lean2dk"] ++ patchCmds
+
 -- TODO can call lake exe directly, rather than through runCmd?
 script trans_only (args) do
   IO.println "{BLUE}running translation only..."
-  match ← runCmds ["lake build fixtures", s!"lake exe lean2dk{argsString args}"] with
+  match ← runCmds (["lake build fixtures"] ++ buildLean2dkCmds ++ [s!".lake/build/bin/lean2dk{argsString args}"]) with
   | .error e => eprintColor LIGHT_GRAY e; return 1
   | .ok stdout =>
     printColor NOCOLOR stdout
   return 1
 
+/-- Build (and on macOS patch) the `lean2dk` binary without running a translation. -/
+script patch do
+  printColor BLUE "building + patching lean2dk binary..."
+  match ← runCmds buildLean2dkCmds with
+  | .error e => eprintColor LIGHT_GRAY e; return 1
+  | .ok stdout => printColor NOCOLOR stdout; return 0
+
 script trans (args) do
   printColor BLUE "running translation + check..."
-  match ← runCmds ["lake build fixtures", s!"lake exe lean2dk{argsString args}"] with
+  match ← runCmds (["lake build fixtures"] ++ buildLean2dkCmds ++ [s!".lake/build/bin/lean2dk{argsString args}"]) with
   | .error e => eprintColor LIGHT_GRAY e; return 1
   | .ok stdout =>
     printColor NOCOLOR stdout

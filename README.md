@@ -9,6 +9,17 @@ See [here](https://lean-lang.org/lean4/doc/quickstart.html) for how to install L
 lake build
 ```
 
+### macOS note
+
+On recent macOS (Darwin 25.x+), dyld requires the `__DATA_CONST` segment of an
+executable to carry the `SG_READ_ONLY` flag; the Lean v4.18 toolchain's linker
+does not set it, so the freshly-linked `lean2dk` binary aborts at launch with
+`__DATA_CONST segment missing SG_READ_ONLY flag`. `scripts/patch_macho.py`
+patches the flag (and ad-hoc re-signs) post-link. The `lake run` scripts below
+(`trans`, `trans_only`, `patch`) invoke it automatically on macOS. If you run
+the binary directly (`lake exe lean2dk ...`), first run `lake run patch` once
+after each relink so the flag is set.
+
 ## Running
 
 After `lake build`, the lean2dk executable can be found in `.lake/build/bin/lean4less`.
