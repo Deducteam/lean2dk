@@ -138,10 +138,26 @@ def getStructureInfo? (env : Lean.Environment) (structName : Name) : TransM (Opt
 
 def natZero : Lean.Expr := .const ``Nat.zero []
 def natSucc : Lean.Expr := .const ``Nat.succ []
+def natMul : Lean.Expr := .const ``Nat.mul []
+def natTwo : Lean.Expr := .app natSucc (.app natSucc natZero)
 
 def natLitToConstructor : Nat → Lean.Expr
   | 0 => natZero
   | n+1 => .app natSucc (natLitToConstructor n)
+
+/--
+  Translate a `Nat` literal `n` into an `Expr` of type `Nat` in O(log n) size,
+  via a Horner/binary expansion `n = 2*(n/2) + (n%2)` reusing the (already
+  translated) `Nat.mul`, `Nat.succ` and `Nat.zero`. The recursive half is
+  referenced once (inside `Nat.mul 2 _`), so the printed term stays O(log n)
+  rather than blowing up unary `Nat.succ` chains for large literals like 2^32.
+-/
+partial def natLitToExpr : Nat → Lean.Expr
+  | 0 => natZero
+  | 1 => .app natSucc natZero
+  | n =>
+    let doubled := .app (.app natMul natTwo) (natLitToExpr (n / 2))
+    if n % 2 == 0 then doubled else .app natSucc doubled
 
 mutual
   partial def mkProjFn (induct : Name) (us : List Lean.Level) (params : Array Lean.Expr) (i : Nat) (major : Lean.Expr) : TransM Expr := do
@@ -254,10 +270,7 @@ mutual
         withLet (x.fvarId!.name) fvars.toArray lvlParams.toArray $ fromExpr 9 bod
     | .lit (.strVal s) => do pure $ .fixme "STRLIT.FIXME" -- FIXME
     | .lit (.natVal n) => do
-      if n < 10 then
-        fromExpr 10 $ natLitToConstructor n
-      else
-        pure $ .fixme s!"NATLIT.{n}.FIXME" -- FIXME
+      fromExpr 10 $ natLitToExpr n
     | .proj n i s => do
       let sType' ← inferType s
       let sType ← whnf sType'
