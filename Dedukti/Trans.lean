@@ -393,7 +393,10 @@ mutual
                 else
                   pure $ .some $ Lean.mkAppN (.const projFn lvls) (params ++ #[outVar])
               | .none => tthrow "impossible case"
-            if projApps?.any (·.isNone) then
+            -- If there are no projectable fields, the struct-eta rule would be
+            -- `mk params --> outVar` with `outVar` unbound on the LHS (an invalid rewrite rule).
+            -- Emit the constructor as a plain symbol instead (no eta rule).
+            if projApps?.isEmpty || projApps?.any (·.isNone) then
               pure $ .static name type
             else
               let projApps := projApps?.map (·.get!)
