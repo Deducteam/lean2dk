@@ -47,6 +47,12 @@ def fromLevelParam (p : Name) : TransM Level := do
 def useAuxLvls := true
 
 partial def fromLevel' (l : Lean.Level) : TransM Level := do
+  -- Canonicalize the universe level so semantically-equal levels (e.g. `max u u` vs `u`,
+  -- or differently-associated/ordered maxes) translate to *identical* Dedukti terms. This
+  -- dedups the aux-level cache (keyed on the structural level below) and lets Dedukti's
+  -- convertibility checks on `enc.El <lvl> _` types hit the syntactic-equality fast path
+  -- instead of re-running the expensive `maxS`/`sublvl` normalization millions of times.
+  let l := l.normalize
   if let .param p := l then
     return ← fromLevelParam p
 
