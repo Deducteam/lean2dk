@@ -1,6 +1,6 @@
 # lean2dk
 
-lean4dk is a tool for translating Lean to Dedukti. The implementation is still a work-in-progress.
+lean2dk is a tool for translating Lean to Dedukti. The implementation is still a work-in-progress.
 
 ## Building
 
@@ -22,7 +22,7 @@ after each relink so the flag is set.
 
 ## Running
 
-After `lake build`, the lean2dk executable can be found in `.lake/build/bin/lean4less`.
+After `lake build`, the lean2dk executable can be found in `.lake/build/bin/lean2dk`.
 
 The command line arguments are:
 
@@ -54,44 +54,106 @@ To translate a different Lean package, navigate the directory of the target proj
 
 ## Checking the translated output (requires a patched Dedukti)
 
-The translated `.dk` files in `dk/out/` are type-checked with Dedukti. lean2dk's
-output of Lean **well-founded definitions** (e.g. `Nat.modCore`) is, however, only
-checkable by a Dedukti kernel with **lazy-delta congruence**, enabled by the
-`DK_LAZY_DELTA` environment variable.
+The translated `.dk` files in `dk/out/` are type-checked with Dedukti. Stock
+Dedukti **cannot** check the output of realistic Lean modules: the encoding of
+Lean's well-founded recursion, structure eta, and universe levels drives the
+kernel's `whnf`/conversion into non-terminating or exponential behaviour that
+Lean's own kernel only escapes via laziness, proof irrelevance, and structural
+sharing. lean2dk therefore targets the [rish987/Dedukti](https://github.com/rish987/Dedukti)
+fork, which adds the matching escape hatches.
 
-Why: such definitions translate (via the `WellFounded.fix`/`Acc.rec` encoding)
-to terms whose accessibility proofs have no strong normal form for symbolic
-arguments — Lean's kernel only stays out of that loop because it is lazy and
-compares a shared head's *arguments* before unfolding it. Stock Dedukti
-`whnf`-unfolds the recursor first and is dragged into the non-terminating
-reduction. `DK_LAZY_DELTA` gives Dedukti the same arg-wise-congruence escape
-hatch. (Background: the non-termination is documented, with a kernel-side
-reproducer, on the `acc-wf-nontermination-demo` branch of
-[Lean4Lean](https://github.com/rish987/Lean4Lean).)
+### Why the fork is necessary
+
+Three independent kernel changes, each addressing a different way the translated
+terms break a stock kernel:
+
+1. **Lazy-delta congruence** (`DK_LAZY_DELTA=1`). Well-founded definitions (e.g.
+   `Nat.modCore`) translate via the `WellFounded.fix`/`Acc.rec` encoding to terms
+   whose accessibility proofs have no strong normal form for symbolic arguments.
+   Lean's kernel stays out of that loop because it compares a shared head's
+   *arguments* before unfolding it; stock Dedukti `whnf`-unfolds the recursor
+   first and diverges. Lazy-delta congruence gives Dedukti the same arg-wise
+   escape. (Reproducer: the `acc-wf-nontermination-demo` branch of
+   [Lean4Lean](https://github.com/rish987/Lean4Lean).)
+
+2. **Convertibility memoization + reduction sharing** (on by default; disable with
+   `DK_NO_MEMO=1`). The projection-based recursor for eta-structures
+   (`Prod.rec C f x ≡ f x.1 x.2`) is non-linear in its `normalize.maxS` universe-
+   level arguments — required for the rewrite rule to be subject-reduction-correct —
+   so every match fires a universe-level convertibility check, and the recursor
+   *duplicates* its major premise. On the nested `PProd`/`Nat.below` structures
+   produced by `brecOn`, both effects blow up (millions of identical level checks;
+   exponential re-reduction of the shared subterm). The fork (a) memoizes positive
+   level convertibility and (b) memoizes the whnf of closed redexes so a duplicated
+   subterm is reduced once. Both caches are signature-scoped (a hook invalidates
+   them whenever the signature changes), so they stay sound.
+
+3. **Diagnostics / safety budgets** (off by default): `DK_PROGRESS=1` prints a
+   per-declaration type-checking heartbeat; `DK_TOS_BUDGET=<nodes>` and
+   `DK_MEM_BUDGET=<bytes>` abort a declaration (naming it) instead of OOMing when
+   its translated normal form is finite but exponentially large.
 
 ### Building the patched Dedukti
 
-The patch lives on the `lazy-delta-congruence` branch of the
-[rish987/Dedukti](https://github.com/rish987/Dedukti/tree/lazy-delta-congruence)
-fork (forked from upstream `v2.7`). Build it with the OCaml/opam toolchain:
+Build the `progress-trace` branch of the fork (forked from upstream `v2.7`; it
+layers the diagnostics and the memoization/sharing on top of lazy-delta
+congruence — i.e. everything above):
 ```
- $ git clone -b lazy-delta-congruence git@github.com:rish987/Dedukti.git ~/projects/Dedukti
+ $ git clone -b progress-trace git@github.com:rish987/Dedukti.git ~/projects/Dedukti
  $ (cd ~/projects/Dedukti && dune build commands/main.exe)
 ```
 This produces the kernel binary at
 `~/projects/Dedukti/_build/default/commands/main.exe` (a `dk`-compatible
-multicall: `… check`, `… dep`, etc.). Alternatively, install it as your `dk`
-with `opam pin add dedukti ~/projects/Dedukti`.
+multicall: `… check`, `… dep`, etc.). Alternatively `opam pin add dedukti ~/projects/Dedukti`.
 
 ### Running the check
 
-`dk/Makefile` is pre-wired for this: it `export`s `DK_LAZY_DELTA := 1` and uses a
-`DK` variable that defaults to the fork build above (override with
-`make DK=dk …` if you installed the patched kernel on `PATH`). So:
+`dk/Makefile` is pre-wired: it `export`s `DK_LAZY_DELTA := 1` and uses a `DK`
+variable defaulting to the fork build above (override with `make DK=dk …` if you
+installed the patched kernel on `PATH`). Memoization/sharing are on by default.
 ```
  $ lake run check                      # type-check everything currently in dk/out/
  $ lake run trans Init.Data.Nat.Lemmas # translate a module AND check it
  $ make check -C dk                    # (equivalent to `lake run check`)
 ```
-With a stock (unpatched) Dedukti, checking modules that contain well-founded
-definitions will not terminate.
+With a stock (unpatched) Dedukti, or with `DK_NO_MEMO=1`, checking realistic
+modules will not terminate (or will exhaust memory).
+
+## Stubbing infeasible constants
+
+Some Lean constants cannot be checked by *any* term-based kernel after translation,
+because the cost is inherent to the encoding rather than the kernel. lean2dk
+**value-stubs** these: it emits the constant with its real type but drops the
+rewrite rule / body, turning it into a postulate. Stubs are reported to
+`dk/out/STUBBED.txt`, and the full list of currently-stubbed constants is small
+(a couple dozen for `Init.Data.Nat.Lemmas`). Three classes are detected:
+
+1. **Bignum primitive `Nat` ops.** Lean computes `Nat` arithmetic/comparison with
+   GMP; the encoding uses a unary `Nat.succ` representation, so an op on a large
+   literal (e.g. `Nat.Linear.fixedVar = 10^8`) is infeasible. A static scan flags
+   any constant applying a `Nat` op — `add`/`mul`/`pow`/… and, crucially,
+   `Nat.decEq`/`BEq.beq`/`instDecidableEqNat`, which `Lean4Less.reduceNat` does not
+   intercept — to an operand exceeding `Lean4Less.natPrimOpStubThreshold`.
+
+2. **Exponential decision-procedure proofs.** The `omega`/linear-arith machinery
+   (`Nat.Linear.{Expr,ExprCnstr}.{toPoly,toNormPoly,denote_*,of_cancel_*,…}`)
+   translates, via the structure-eta recursor over `brecOn`, to normal forms that
+   are **finite but exponentially large** — so even with the memoization/sharing
+   above, materializing and comparing them is infeasible (the only complete fix
+   would be global hash-consing in the kernel, as Lean's kernel does). These are
+   listed in `dk/force_stub.txt` (one Lean name per line); a stubbed function's
+   auto-generated equation/unfolding lemmas (`.eq_*`, `._sunfold`) are stubbed with
+   it automatically, since their `rfl` proofs need the function to reduce.
+
+3. **`String` literals.** lean2dk does not yet translate `String` literals (it
+   emits a `STRLIT.FIXME` placeholder), so a constant containing one is ill-typed.
+   A static scan value-stubs them; in practice these are incidental error/panic
+   helpers (`mkPanicMessageWithDecl`, `List.get!Internal`).
+
+**Caveat.** A stubbed constant is *trusted, not checked*: Dedukti does not
+independently verify it. All stubbed constants here are theorems/definitions that
+are verified by Lean's own kernel, and lemmas that *use* them still typecheck
+against the postulated signatures — so the result is a Dedukti check of everything
+*except* the genuinely-infeasible encoding artifacts, with those taken on faith
+from Lean. Classes (1) and (3) are limitations that better encodings (binary
+`Nat`, real `String` literals) would remove; class (2) is the fundamental one.
