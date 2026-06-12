@@ -1,0 +1,23 @@
+-- Constants value-stubbed by lean2dk regardless of the bignum scan.
+-- One Lean constant name per line; blank lines and --/# comments ignored.
+--
+-- The omega/linear-arith decision-procedure internals below translate (via the
+-- structure-eta recursor over brecOn/Nat_below) to FINITE but exponentially-large
+-- normal forms, so Dedukti's conversion is infeasible (multi-GB, see docs). Their
+-- equation lemmas (`.eq_*`, `._sunfold`) are auto-stubbed by the eqn-lemma cascade.
+-- These are verified in Lean; postulating them does not affect the Nat lemmas that
+-- *use* omega (those still typecheck against the postulated machinery).
+Nat.Linear.ExprCnstr.denote_toNormPoly
+Nat.Linear.ExprCnstr.toPoly_norm_eq
+Nat.Linear.Expr.toNormPoly
+Nat.Linear.ExprCnstr.toNormPoly
+Nat.Linear.Expr.toPoly
+Nat.Linear.ExprCnstr.toPoly
+Nat.Linear.Expr.eq_of_toNormPoly
+Nat.Linear.Expr.eq_of_toNormPoly_eq
+Nat.Linear.ExprCnstr.eq_of_toNormPoly_eq
+Nat.Linear.Expr.denote_toPoly
+Nat.Linear.ExprCnstr.denote_toPoly
+Nat.Linear.Expr.of_cancel_le
+Nat.Linear.Expr.of_cancel_eq
+Nat.Linear.Expr.of_cancel_lt

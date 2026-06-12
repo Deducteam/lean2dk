@@ -4,6 +4,7 @@ import Cli
 import Lean.Replay
 import Lean4Less.Replay
 import Lean4Less.Commands
+import Lean4Less.TypeChecker
 import Lean4Lean.Commands
 import Dedukti.Util
 
@@ -20,6 +21,73 @@ abbrev NOCOLOR    := "\x1b[0m"
 
 def eprintColor (color s : String) := IO.eprintln s!"{color}{s}{NOCOLOR}"
 def printColor (color s : String) := IO.println s!"{color}{s}{NOCOLOR}"
+
+/-- Nat operations whose Dedukti reduction on a bignum operand is infeasible (Dedukti has no
+    native arithmetic; it would unfold to a unary `Nat.succ` chain). `Nat.decEq`/`BEq.beq` are
+    included because `Lean4Less.reduceNat` does *not* intercept them — so the dynamic
+    `natPrimOpStubThreshold` check during patching never fires on e.g. `BEq.beq … fixedVar fixedVar`
+    (lean4less stays lazy and never forces it), yet Dedukti's conversion checker would. -/
+def natBigOpHeads : Lean.NameSet :=
+  [``Nat.add, ``Nat.sub, ``Nat.mul, ``Nat.pow, ``Nat.mod, ``Nat.div, ``Nat.gcd,
+   ``Nat.beq, ``Nat.ble, ``Nat.decEq, ``instDecidableEqNat, ``BEq.beq]
+  |>.foldl (·.insert ·) (Lean.NameSet.empty)
+
+/-- Collect closed (no loose bvars / fvars) arguments that appear directly under a
+    `natBigOpHeads` head anywhere in `e`. -/
+partial def collectNatBigOpArgs (e : Lean.Expr) : Array Lean.Expr := Id.run do
+  let mut acc : Array Lean.Expr := #[]
+  match e.getAppFn with
+  | .const n _ =>
+    if natBigOpHeads.contains n then
+      for a in e.getAppArgs do
+        if !a.hasLooseBVars && !a.hasFVar then acc := acc.push a
+  | _ => pure ()
+  match e with
+  | .app .. =>
+    for a in e.getAppArgs do acc := acc ++ collectNatBigOpArgs a
+  | .lam _ d b _ | .forallE _ d b _ => acc := acc ++ collectNatBigOpArgs d ++ collectNatBigOpArgs b
+  | .letE _ t v b _ => acc := acc ++ collectNatBigOpArgs t ++ collectNatBigOpArgs v ++ collectNatBigOpArgs b
+  | .mdata _ b => acc := acc ++ collectNatBigOpArgs b
+  | .proj _ _ b => acc := acc ++ collectNatBigOpArgs b
+  | _ => pure ()
+  return acc
+
+open Lean Lean.Meta in
+/-- `true` if some `natBigOpHeads` application in `e` has an operand that evaluates (at `.all`
+    transparency, matching Dedukti which ignores reducibility annotations) to a `Nat` literal
+    exceeding `threshold`. -/
+def hasLargeNatBigOp (e : Lean.Expr) (threshold : Nat) : MetaM Bool := do
+  for a in collectNatBigOpArgs e do
+    -- fast path: already a literal
+    if let some v := a.rawNatLit? then
+      if v > threshold then return true
+      else continue
+    unless a.isConst || a.isApp do continue
+    let w? ← try pure (some (← withTransparency .all (whnf a))) catch _ => pure none
+    if let some w := w? then
+      if let some v := w.rawNatLit? then
+        if v > threshold then return true
+  return false
+
+open Lean Lean.Meta in
+/-- Static scan over `consts`: flag any constant whose value (or, failing that, type) applies a
+    `Nat` operation to a bignum operand. Returns the names to value-stub. We always value-stub
+    (keep the real type, drop the body): the infeasible reduction is only forced when *checking a
+    body* against the type, so dropping the body suffices, and value-stubs don't taint users
+    (their proofs reference the kept type as a postulate). -/
+def scanLargeNatBigOps (consts : Lean.NameSet) (env : Lean.Environment) (threshold : Nat) :
+    MetaM Lean.NameSet := do
+  let mut valueAdd : Lean.NameSet := default
+  for c in consts do
+    let some ci := env.find? c | continue
+    let inValue ← match ci.value? with
+      | some v => hasLargeNatBigOp v threshold
+      | none => pure false
+    if inValue then
+      valueAdd := valueAdd.insert c
+    else if ← hasLargeNatBigOp ci.type threshold then
+      valueAdd := valueAdd.insert c
+  return valueAdd
 
 structure ForEachModuleState where
   moduleNameSet : Std.HashSet Name := {}
@@ -183,11 +251,55 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         for (pn, pi) in  ← getProjFns onlyConstsDeps env do
           onlyConstsDeps := onlyConstsDeps.insert pn pi
 
+        -- L4L_RECHECK: re-typecheck the *patched* dep-closure with plain lean4lean
+        -- (timing via L4L_TIME_ALL, cache toggle via L4L_NO_CACHE). This measures how
+        -- much the kernel's memoization accounts for its speed on the patched terms that
+        -- Dedukti chokes on. Reuses Lean4Lean.replay so prim-op stubs are skipped.
+        if (← IO.getEnv "L4L_RECHECK").isSome then
+          IO.println ">> L4L_RECHECK: re-typechecking patched dep-closure with plain lean4lean"
+          let _ ← Lean4Lean.replay Lean4Lean.addDecl {newConstants := onlyConstsDeps, opts := {proofIrrelevance := false, kLikeReduction := false}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := false) (op := "typecheck") (valueStubbed := vs) (typeStubbed := ts)
+
         pure env
       else
         pure env
 
     let constsNames : Lean.NameSet := onlyConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const |>.union $ patchConstsDeps.keys.foldl (init := default) fun acc const => acc.insert const
+
+    -- Static scan for bignum `Nat` operations the dynamic patch-time check misses. The
+    -- `natPrimOpStubThreshold` throw only fires when lean4less *forces* a `reduceNat`-intercepted
+    -- op (`Nat.add`/`mul`/`beq`/…) to a bignum literal. It misses `Nat.decEq`/`BEq.beq` (not
+    -- intercepted by `reduceNat`) and, more fundamentally, any op lean4less never forces because
+    -- it stays lazy (e.g. `BEq.beq … Nat.Linear.fixedVar fixedVar`, fixedVar = 10^8, in
+    -- `denote.toPoly.go`). Dedukti's conversion *would* force the unary reduction and diverge, so
+    -- we value-stub the enclosing constant here.
+    if elim then
+      let coreCtx : Lean.Core.Context := { fileName := "<largeNatScan>", fileMap := default, options := default }
+      let coreState : Lean.Core.State := { env }
+      let (vsScan, _) ← (Lean.Meta.MetaM.run'
+        (scanLargeNatBigOps constsNames env Lean4Less.TypeChecker.Inner.natPrimOpStubThreshold)).toIO coreCtx coreState
+      let newOnes := vsScan.fold (fun acc c => if valueStubBase.contains c || typeStubBase.contains c then acc else acc.insert c) (Lean.NameSet.empty)
+      if newOnes.size > 0 then
+        printColor YELLOW s!">> Static scan flagged {newOnes.size} additional constant(s) with bignum Nat operations (value-stubbing)"
+        valueStubBase := valueStubBase.union newOnes
+
+    -- Force-stub: constants listed in `dk/force_stub.txt` (one Lean name per line; blank
+    -- lines and `--`/`#` comments ignored) are value-stubbed. For constants whose Dedukti
+    -- check is intractable for reasons the static bignum scan can't see -- e.g.
+    -- `Nat.Linear.ExprCnstr.denote_toNormPoly`, whose translated structure-eta-recursor normal
+    -- form is exponentially large (finite, but not feasibly checkable; see docs). Value-stub
+    -- (real type kept, body dropped) is sound for these `omega`/linear-arith internals.
+    let forceStubPath : System.FilePath := ((← IO.Process.getCurrentDir).join "dk").join "force_stub.txt"
+    if ← forceStubPath.pathExists then
+      let contents ← IO.FS.readFile forceStubPath
+      let mut forced : Lean.NameSet := default
+      for line in contents.splitOn "\n" do
+        let s := line.trim
+        unless s.isEmpty || s.startsWith "--" || s.startsWith "#" do
+          forced := forced.insert s.toName
+      let newForced := forced.fold (fun acc c => if valueStubBase.contains c || typeStubBase.contains c then acc else acc.insert c) Lean.NameSet.empty
+      if newForced.size > 0 then
+        printColor YELLOW s!">> Force-stubbing {newForced.size} constant(s) from dk/force_stub.txt (value-stub)"
+        valueStubBase := valueStubBase.union newForced
 
     -- Cascade the stubbing over the dependency DAG (in Lean-name space):
     --  * a constant whose *type* references a type-stubbed constant must itself be type-stubbed;
@@ -197,6 +309,12 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       match e? with
       | some e => e.getUsedConstants.foldl (·.insert ·) default
       | none => default
+    -- A value-stubbed function `f` no longer reduces, so its auto-generated equation /
+    -- unfolding lemmas (`f.eq_1`, `f.eq_def`, `f._eq_1`, `f._sunfold`, `f._unfold`, …),
+    -- whose proofs are `rfl`, would fail to typecheck in Dedukti (the `rfl` needs `f` to
+    -- reduce). Value-stub them too.
+    let isEqnLemmaSuffix (s : String) : Bool :=
+      s.startsWith "eq_" || s.startsWith "_eq_" || s == "eq_def" || s == "_sunfold" || s == "_unfold"
     let mut typeStub := typeStubBase
     let mut valueStub := valueStubBase
     let mut changed := true
@@ -207,6 +325,9 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
         if !typeStub.contains c && (usedIn (some ci.type)).any (typeStub.contains ·) then
           typeStub := typeStub.insert c; changed := true
         else if !typeStub.contains c && !valueStub.contains c && (usedIn ci.value?).any (typeStub.contains ·) then
+          valueStub := valueStub.insert c; changed := true
+        else if !typeStub.contains c && !valueStub.contains c
+            && (match c with | .str parent last => valueStub.contains parent && isEqnLemmaSuffix last | _ => false) then
           valueStub := valueStub.insert c; changed := true
     -- type-stubbed constants are not value-stubbed (type-stub subsumes)
     valueStub := valueStub.fold (fun acc c => if typeStub.contains c then acc else acc.insert c) default

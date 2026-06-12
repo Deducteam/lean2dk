@@ -410,6 +410,49 @@ mutual
         pure $ .static name type
     | .recInfo      (val : Lean.RecursorVal) => do
       let lvls := cnst.levelParams.map (Lean.Level.param ·) |>.toArray
+      -- Recursor on an eta-structure: emit a *projection-based* rule so it reduces on a
+      -- *neutral* major premise too, matching Lean's definitional structure eta, e.g.
+      --   `Prod.rec C f x --> f (Prod.fst x) (Prod.snd x)`   for any `x`.
+      -- The stock constructor-keyed rule below only fires on `Prod.mk …`, so `Prod.rec C f x`
+      -- with `x` a variable is stuck, and convertibilities Lean closes by eta (e.g. in
+      -- `Prod.instLawfulBEq`) fail in Dedukti. Gated to the same structures that get the
+      -- constructor eta rule (single ctor, all fields projectable, field count matches).
+      let etaStruct? : Option (Name × Lean.StructureInfo) :=
+        match val.rules with
+        | [r] => match env.find? r.ctor with
+          | some (.ctorInfo cval) =>
+            if Lean.isStructure env cval.induct then
+              match Lean.getStructureInfo? env cval.induct with
+              | some info =>
+                if info.fieldNames.size > 0 && info.fieldNames.size == r.nfields
+                   && info.fieldNames.all (fun f =>
+                        match Lean.getProjFnForField? env cval.induct f with
+                        | some pf => env.contains pf
+                        | none    => false)
+                then some (cval.induct, info) else none
+              | none => none
+            else none
+          | _ => none
+        | _ => none
+      -- CAUSAL TEST (revert eta-recursor): force the constructor-keyed path.
+      match (if (← IO.getEnv "L4L_NO_ETA_REC").isSome then none else etaStruct?) with
+      | some (induct, info) =>
+        forallTelescope cnst.type fun args _ => do
+          let major := args[args.size - 1]!
+          let minor := args[val.numParams + val.numMotives]!
+          let majorTy ← inferType major
+          let structLvls := majorTy.getAppFn.constLevels!
+          let structArgs := majorTy.getAppArgs
+          let projApps ← info.fieldNames.mapM fun f => do
+            let some pf := Lean.getProjFnForField? env induct f | tthrow "impossible: missing projection"
+            pure $ Lean.mkAppN (.const pf structLvls) (structArgs ++ #[major])
+          let lhsLean := Lean.mkAppN (.const nameOrig lvls.toList) args
+          let rhsLean := Lean.mkAppN minor projApps
+          let (lhs, rhs) ← withTypedFVars args $ withNoLVarNormalize $ do
+            pure (← fromExpr 22 lhsLean, ← fromExpr 23 rhsLean)
+          let vars := cnst.levelParams.toArray ++ args.map (·.fvarId!.name)
+          pure $ .definable name type [.mk vars.toList lhs rhs]
+      | none =>
       let rules ← val.rules.foldlM (init := []) fun acc r => do
         -- dbg_trace s!"\nrule for ctor {r.ctor} ({r.nfields} fields, k = {val.k}, numParams = {val.numParams}, numIndices = {val.numIndices}): {r.rhs}\n"
         lambdaTelescope r.rhs fun domVars bod => do
