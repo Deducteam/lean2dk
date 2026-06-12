@@ -2,6 +2,14 @@
 
 lean2dk is a tool for translating Lean to Dedukti. The implementation is still a work-in-progress.
 
+> **Most feature-complete branch.** The [`claude-stable`](../../tree/claude-stable)
+> branch is currently the most feature-complete: it translates and type-checks
+> `Init.Data.Nat.Lemmas` end-to-end against a patched Dedukti kernel, and documents
+> the required kernel patches and the constant-stubbing it relies on (see that
+> branch's README). Note that `claude-stable` is **pinned to Lean `v4.18.0-rc1`**
+> (this `main` branch tracks a newer Lean), so check it out with the matching
+> toolchain to reproduce.
+
 ## Building
 
 See [here](https://lean-lang.org/lean4/doc/quickstart.html) for how to install Lean and `elan`. With `elan` installed, compile lean2dk by running:
