@@ -89,6 +89,22 @@ def scanLargeNatBigOps (consts : Lean.NameSet) (env : Lean.Environment) (thresho
       valueAdd := valueAdd.insert c
   return valueAdd
 
+/-- lean2dk does not translate `String` literals (it emits a `STRLIT.FIXME` placeholder, see
+    `Trans.lean`), so any constant whose body contains one is ill-typed in Dedukti. These are
+    incidental error/panic helpers (`mkPanicMessageWithDecl`, `List.get!Internal`, …). Detect
+    and value-stub them (the type — a function over `String` — is fine; only the body with the
+    literal is dropped). -/
+partial def exprHasStrLit (e : Lean.Expr) : Bool :=
+  (e.find? fun s => match s with | .lit (.strVal _) => true | _ => false).isSome
+
+def scanStrLitConsts (consts : Lean.NameSet) (env : Lean.Environment) : Lean.NameSet := Id.run do
+  let mut valueAdd : Lean.NameSet := default
+  for c in consts do
+    let some ci := env.find? c | continue
+    if (match ci.value? with | some v => exprHasStrLit v | none => false) then
+      valueAdd := valueAdd.insert c
+  return valueAdd
+
 structure ForEachModuleState where
   moduleNameSet : Std.HashSet Name := {}
   count := 0
@@ -281,6 +297,13 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
       if newOnes.size > 0 then
         printColor YELLOW s!">> Static scan flagged {newOnes.size} additional constant(s) with bignum Nat operations (value-stubbing)"
         valueStubBase := valueStubBase.union newOnes
+
+      -- String literals are untranslated (STRLIT.FIXME); value-stub constants using them.
+      let strLitConsts := scanStrLitConsts constsNames env
+      let newStr := strLitConsts.fold (fun acc c => if valueStubBase.contains c || typeStubBase.contains c then acc else acc.insert c) (Lean.NameSet.empty)
+      if newStr.size > 0 then
+        printColor YELLOW s!">> Static scan flagged {newStr.size} constant(s) using String literals (value-stubbing)"
+        valueStubBase := valueStubBase.union newStr
 
     -- Force-stub: constants listed in `dk/force_stub.txt` (one Lean name per line; blank
     -- lines and `--`/`#` comments ignored) are value-stubbed. For constants whose Dedukti
