@@ -10,30 +10,20 @@ env:
 
 jobs:
   ci:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-        ocaml-compiler:
-          - "5.1"
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set-up OCaml ${{ matrix.ocaml-compiler }}
-        uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: ${{ matrix.ocaml-compiler }}
-      - run: sudo apt-get install libev-dev
-      - run: opam install dedukti
-      - run: opam install lambdapi
       - uses: Julian/setup-lean@v1
 
-      - name: build
+      - name: Build
         run: lake build
 
+      # Translation smoke test on the self-contained `fixtures.Test` module.
+      # NB: this only *translates* (the previous CI passed a file path, not a module
+      # name, and never worked). Type-*checking* the output requires the patched
+      # rish987/Dedukti kernel (lazy-delta congruence + reduction sharing), which isn't
+      # available here — see README ("Checking the translated output").
       - name: Test translation
-        run: eval $(opam env) && lake --version && lake run trans fixtures/Test.lean
+        run: lake env .lake/build/bin/lean2dk fixtures.Test --no-elim
