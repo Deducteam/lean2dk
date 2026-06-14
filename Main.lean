@@ -254,7 +254,7 @@ unsafe def runTransCmd (p : Parsed) : IO UInt32 := do
     let mut typeStubBase : Lean.NameSet := default
     let env ← do
       if elim then
-        let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim}) else Lean4Lean.addDecl
+        let addDecl := if elim then Lean4Less.addDecl (opts := {proofIrrelevance := elim, kLikeReduction := elim, unitEta := elim}) else Lean4Lean.addDecl
 
         let (kenv, _, vs, ts) ← Lean4Lean.replay addDecl {newConstants := patchConstsDeps, opts := {proofIrrelevance := not elim, kLikeReduction := not elim}, overrides} (← Lean.mkEmptyEnvironment).toKernelEnv (printProgress := true) (op := "patch")
         let env := Lean4Lean.updateBaseAfterKernelAdd env kenv
