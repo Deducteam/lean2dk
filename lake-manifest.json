@@ -25,7 +25,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "f4258012967257a145689a9f8562d4c1081a836f",
+   "rev": "df479f2a520d2b5177b81660debab277f13a377c",
    "name": "lean4less",
    "manifestFile": "lake-manifest.json",
    "inputRev": "claude-stable",
